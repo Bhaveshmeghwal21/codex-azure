@@ -216,6 +216,14 @@ impl AccountRequestProcessor {
                 self.login_api_key_v2(request_id, LoginApiKeyParams { api_key })
                     .await;
             }
+            LoginAccountParams::AzureOpenAi {
+                api_key,
+                endpoint,
+                api_version,
+            } => {
+                self.login_azure_v2(request_id, api_key, endpoint, api_version)
+                    .await;
+            }
             LoginAccountParams::Chatgpt {
                 codex_streamlined_login,
             } => {
@@ -298,6 +306,127 @@ impl AccountRequestProcessor {
             self.send_login_success_notifications(/*login_id*/ None)
                 .await;
         }
+    }
+
+    async fn login_azure_v2(
+        &self,
+        request_id: ConnectionRequestId,
+        api_key: String,
+        endpoint: String,
+        api_version: Option<String>,
+    ) {
+        let result = self
+            .login_azure_common(api_key, endpoint, api_version)
+            .await
+            .map(|()| LoginAccountResponse::AzureOpenAi {});
+        let logged_in = result.is_ok();
+        self.outgoing.send_result(request_id, result).await;
+
+        if logged_in {
+            self.send_login_success_notifications(/*login_id*/ None)
+                .await;
+        }
+    }
+
+    async fn login_azure_common(
+        &self,
+        api_key: String,
+        endpoint: String,
+        api_version: Option<String>,
+    ) -> std::result::Result<(), JSONRPCErrorError> {
+        if self.auth_manager.is_external_chatgpt_auth_active() {
+            return Err(self.external_auth_active_error());
+        }
+
+        if matches!(
+            self.config.forced_login_method,
+            Some(ForcedLoginMethod::Chatgpt)
+        ) {
+            return Err(invalid_request(
+                "Azure OpenAI login is disabled. Use ChatGPT login instead.",
+            ));
+        }
+
+        // Cancel any active login attempt.
+        {
+            let mut guard = self.active_login.lock().await;
+            if let Some(active) = guard.take() {
+                drop(active);
+            }
+        }
+
+        // Normalise endpoint: strip trailing slashes.
+        let endpoint = endpoint.trim_end_matches('/').to_string();
+
+        // Store the API key via `experimental_bearer_token` rather than `env_key`.
+        //
+        // `env_key` tells `ModelProviderInfo::api_key()` to call
+        // `std::env::var("OPENAI_API_KEY")` at request time.  The key we collected
+        // from the user lives only in this process; it is never exported to the
+        // OS environment, so `std::env::var` would always return `Err` and Azure
+        // would reject every request with 401.
+        //
+        // `experimental_bearer_token` stores the key directly in `config.toml`.
+        // `bearer_auth_for_provider` reads it, and because the provider name is
+        // "azure" `is_azure_responses_provider` returns `true`, which causes
+        // `BearerAuthProvider` to emit `api-key: <token>` – the header Azure requires.
+        let mut edits = vec![
+            // Activate this provider.
+            ConfigEdit::SetPath {
+                segments: vec!["model_provider".to_string()],
+                value: toml_edit::value("azure"),
+            },
+            // Name must equal "azure" (case-insensitive) for the Azure header logic.
+            ConfigEdit::SetPath {
+                segments: vec![
+                    "model_providers".to_string(),
+                    "azure".to_string(),
+                    "name".to_string(),
+                ],
+                value: toml_edit::value("azure"),
+            },
+            // Azure resource endpoint, e.g. https://my-resource.openai.azure.com
+            ConfigEdit::SetPath {
+                segments: vec![
+                    "model_providers".to_string(),
+                    "azure".to_string(),
+                    "base_url".to_string(),
+                ],
+                value: toml_edit::value(endpoint),
+            },
+            // Embed the API key directly – no env-var lookup needed at request time.
+            ConfigEdit::SetPath {
+                segments: vec![
+                    "model_providers".to_string(),
+                    "azure".to_string(),
+                    "experimental_bearer_token".to_string(),
+                ],
+                value: toml_edit::value(api_key),
+            },
+        ];
+
+        // Only persist the api-version when the user provided a non-empty value.
+        if let Some(version) = api_version.filter(|v| !v.trim().is_empty()) {
+            edits.push(ConfigEdit::SetPath {
+                segments: vec![
+                    "model_providers".to_string(),
+                    "azure".to_string(),
+                    "query_params".to_string(),
+                    "api-version".to_string(),
+                ],
+                value: toml_edit::value(version),
+            });
+        }
+
+        if let Err(err) = ConfigEditsBuilder::new(&self.config.codex_home)
+            .with_edits(edits)
+            .apply_blocking()
+        {
+            return Err(internal_error(format!("failed to update config.toml: {err}")));
+        }
+
+        self.auth_manager.reload().await;
+        Ok(())
     }
 
     // Build options for a ChatGPT login attempt; performs validation.

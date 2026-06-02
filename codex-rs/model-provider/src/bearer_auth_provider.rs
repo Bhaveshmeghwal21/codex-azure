@@ -8,6 +8,7 @@ pub struct BearerAuthProvider {
     pub token: Option<String>,
     pub account_id: Option<String>,
     pub is_fedramp_account: bool,
+    pub is_azure: bool,
 }
 
 impl BearerAuthProvider {
@@ -16,6 +17,7 @@ impl BearerAuthProvider {
             token: Some(token),
             account_id: None,
             is_fedramp_account: false,
+            is_azure: false,
         }
     }
 
@@ -24,16 +26,21 @@ impl BearerAuthProvider {
             token: token.map(str::to_string),
             account_id: account_id.map(str::to_string),
             is_fedramp_account: false,
+            is_azure: false,
         }
     }
 }
 
 impl AuthProvider for BearerAuthProvider {
     fn add_auth_headers(&self, headers: &mut HeaderMap) {
-        if let Some(token) = self.token.as_ref()
-            && let Ok(header) = HeaderValue::from_str(&format!("Bearer {token}"))
-        {
-            let _ = headers.insert(http::header::AUTHORIZATION, header);
+        if let Some(token) = self.token.as_ref() {
+            if self.is_azure {
+                if let Ok(header) = HeaderValue::from_str(token) {
+                    let _ = headers.insert("api-key", header);
+                }
+            } else if let Ok(header) = HeaderValue::from_str(&format!("Bearer {token}")) {
+                let _ = headers.insert(http::header::AUTHORIZATION, header);
+            }
         }
         if let Some(account_id) = self.account_id.as_ref()
             && let Ok(header) = HeaderValue::from_str(account_id)
@@ -57,6 +64,7 @@ mod tests {
             token: Some("access-token".to_string()),
             account_id: None,
             is_fedramp_account: false,
+            is_azure: false,
         };
 
         assert_eq!(
@@ -95,6 +103,7 @@ mod tests {
             token: Some("access-token".to_string()),
             account_id: Some("workspace-123".to_string()),
             is_fedramp_account: true,
+            is_azure: false,
         };
         let mut headers = HeaderMap::new();
 
@@ -106,5 +115,26 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("true")
         );
+    }
+
+    #[test]
+    fn bearer_auth_provider_adds_azure_api_key_header() {
+        let auth = BearerAuthProvider {
+            token: Some("azure-key-123".to_string()),
+            account_id: None,
+            is_fedramp_account: false,
+            is_azure: true,
+        };
+        let mut headers = HeaderMap::new();
+
+        auth.add_auth_headers(&mut headers);
+
+        assert_eq!(
+            headers
+                .get("api-key")
+                .and_then(|value| value.to_str().ok()),
+            Some("azure-key-123")
+        );
+        assert!(headers.get(http::header::AUTHORIZATION).is_none());
     }
 }

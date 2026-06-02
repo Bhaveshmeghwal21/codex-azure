@@ -9,3 +9,31 @@ rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "link-arg=/arm64hazardfree"]
 
 [target.'cfg(all(windows, target_env = "gnu"))']
 rustflags = ["-C", "link-arg=-Wl,--stack,8388608"]
+
+# ---------------------------------------------------------------------------
+# Low-resource build profile  ("release-light")
+# Use with:  cargo build --profile release-light --bin codex
+#
+# Key savings vs plain --release:
+#   codegen-units = 4   → compiler runs 4 parallel workers instead of 256+
+#                         (biggest single RAM reducer; default release = 1
+#                          but with LTO disabled it matters more for linking)
+#   lto = false         → skips Link-Time Optimisation, the most memory-hungry
+#                         optimisation pass (can use 2-4 GB on its own)
+#   opt-level = 2       → good optimisation without the extra LTO pass
+#   debug = false       → no debug symbols embedded → smaller binary, faster link
+# The resulting binary is nearly as fast as --release for everyday use.
+# ---------------------------------------------------------------------------
+[profile.release-light]
+inherits = "release"
+codegen-units = 4
+lto = false
+opt-level = 2
+debug = false
+
+# Limit how many crates are compiled in parallel by default.
+# 0 = use all logical CPUs (can OOM on machines with <8 GB RAM).
+# Set to half your core count, e.g. 4 on an 8-core machine.
+# Override at the command line with --jobs N at any time.
+[build]
+jobs = 4

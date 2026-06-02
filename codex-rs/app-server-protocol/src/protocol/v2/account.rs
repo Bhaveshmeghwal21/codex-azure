@@ -79,6 +79,16 @@ pub enum LoginAccountParams {
         #[ts(optional = nullable)]
         chatgpt_plan_type: Option<String>,
     },
+    #[serde(rename = "azureOpenAi", rename_all = "camelCase")]
+    #[ts(rename = "azureOpenAi", rename_all = "camelCase")]
+    AzureOpenAi {
+        #[serde(rename = "apiKey")]
+        #[ts(rename = "apiKey")]
+        api_key: String,
+        endpoint: String,
+        #[ts(optional = nullable)]
+        api_version: Option<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -112,6 +122,9 @@ pub enum LoginAccountResponse {
     #[serde(rename = "chatgptAuthTokens", rename_all = "camelCase")]
     #[ts(rename = "chatgptAuthTokens", rename_all = "camelCase")]
     ChatgptAuthTokens {},
+    #[serde(rename = "azureOpenAi", rename_all = "camelCase")]
+    #[ts(rename = "azureOpenAi", rename_all = "camelCase")]
+    AzureOpenAi {},
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

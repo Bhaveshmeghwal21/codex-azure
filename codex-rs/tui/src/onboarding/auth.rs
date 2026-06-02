@@ -83,6 +83,10 @@ pub(crate) enum SignInState {
     ChatGptSuccess,
     ApiKeyEntry(ApiKeyInputState),
     ApiKeyConfigured,
+    AzureEndpointEntry(AzureInputState),
+    AzureApiKeyEntry(AzureInputState),
+    AzureApiVersionEntry(AzureInputState),
+    AzureConfigured,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,6 +94,7 @@ pub(crate) enum SignInOption {
     ChatGpt,
     DeviceCode,
     ApiKey,
+    AzureOpenAi,
 }
 
 const API_KEY_DISABLED_MESSAGE: &str = "API key login is disabled.";
@@ -115,6 +120,13 @@ pub(super) async fn cancel_login_attempt(
 pub(crate) struct ApiKeyInputState {
     value: String,
     prepopulated_from_env: bool,
+}
+
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub(crate) struct AzureInputState {
+    pub endpoint: String,
+    pub api_key: String,
+    pub api_version: String,
 }
 
 #[derive(Clone)]
@@ -176,6 +188,9 @@ impl KeyboardHandler for AuthModeWidget {
         if self.handle_api_key_entry_key_event(&key_event) {
             return;
         }
+        if self.handle_azure_entry_key_event(&key_event) {
+            return;
+        }
 
         if keys::MOVE_UP.is_pressed(key_event) {
             self.move_highlight(/*delta*/ -1);
@@ -195,6 +210,10 @@ impl KeyboardHandler for AuthModeWidget {
         }
         if keys::SELECT_THIRD.is_pressed(key_event) {
             self.select_option_by_index(/*index*/ 2);
+            return;
+        }
+        if keys::SELECT_FOURTH.is_pressed(key_event) {
+            self.select_option_by_index(/*index*/ 3);
             return;
         }
         if keys::CONFIRM.is_pressed(key_event) {
@@ -217,7 +236,10 @@ impl KeyboardHandler for AuthModeWidget {
     }
 
     fn handle_paste(&mut self, pasted: String) {
-        let _ = self.handle_api_key_entry_paste(pasted);
+        if self.handle_api_key_entry_paste(pasted.clone()) {
+            return;
+        }
+        let _ = self.handle_azure_entry_paste(pasted);
     }
 }
 
@@ -283,16 +305,26 @@ impl AuthModeWidget {
 
     /// Returns whether the auth flow is currently in API-key entry mode.
     pub(crate) fn is_api_key_entry_active(&self) -> bool {
-        self.sign_in_state
-            .read()
-            .is_ok_and(|guard| matches!(&*guard, SignInState::ApiKeyEntry(_)))
+        self.sign_in_state.read().is_ok_and(|guard| {
+            matches!(
+                &*guard,
+                SignInState::ApiKeyEntry(_)
+                    | SignInState::AzureEndpointEntry(_)
+                    | SignInState::AzureApiKeyEntry(_)
+                    | SignInState::AzureApiVersionEntry(_)
+            )
+        })
     }
 
     /// Returns whether the API-key entry field currently contains any text.
     pub(crate) fn api_key_entry_has_text(&self) -> bool {
-        self.sign_in_state.read().is_ok_and(
-            |guard| matches!(&*guard, SignInState::ApiKeyEntry(state) if !state.value.is_empty()),
-        )
+        self.sign_in_state.read().is_ok_and(|guard| match &*guard {
+            SignInState::ApiKeyEntry(state) => !state.value.is_empty(),
+            SignInState::AzureEndpointEntry(state) => !state.endpoint.is_empty(),
+            SignInState::AzureApiKeyEntry(state) => !state.api_key.is_empty(),
+            SignInState::AzureApiVersionEntry(state) => !state.api_version.is_empty(),
+            _ => false,
+        })
     }
 
     fn confirm_binding(&self) -> KeyBinding {
@@ -318,6 +350,7 @@ impl AuthModeWidget {
         }
         if self.is_api_login_allowed() {
             options.push(SignInOption::ApiKey);
+            options.push(SignInOption::AzureOpenAi);
         }
         options
     }
@@ -330,6 +363,7 @@ impl AuthModeWidget {
         }
         if self.is_api_login_allowed() {
             options.push(SignInOption::ApiKey);
+            options.push(SignInOption::AzureOpenAi);
         }
         options
     }
@@ -371,6 +405,13 @@ impl AuthModeWidget {
             SignInOption::ApiKey => {
                 if self.is_api_login_allowed() {
                     self.start_api_key_entry();
+                } else {
+                    self.disallow_api_login();
+                }
+            }
+            SignInOption::AzureOpenAi => {
+                if self.is_api_login_allowed() {
+                    self.start_azure_entry();
                 } else {
                     self.disallow_api_login();
                 }
@@ -458,6 +499,14 @@ impl AuthModeWidget {
                         option,
                         "Provide your own API key",
                         "Pay for what you use",
+                    ));
+                }
+                SignInOption::AzureOpenAi => {
+                    lines.extend(create_mode_item(
+                        idx,
+                        option,
+                        "Provide your own Azure OpenAI details",
+                        "Connect your Azure OpenAI resource",
                     ));
                 }
             }
@@ -611,6 +660,144 @@ impl AuthModeWidget {
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .render(area, buf);
+    }
+
+    fn render_azure_configured(&self, area: Rect, buf: &mut Buffer) {
+        let lines = vec![
+            "✓ Azure OpenAI configured".fg(Color::Green).into(),
+            "".into(),
+            "  Codex will connect directly to your Azure OpenAI endpoint.".into(),
+        ];
+
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .render(area, buf);
+    }
+
+    fn render_azure_entry(&self, area: Rect, buf: &mut Buffer, state: &AzureInputState, current_step: usize) {
+        let [intro_area, endpoint_area, key_area, version_area, footer_area] = Layout::vertical([
+            Constraint::Min(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(2),
+        ])
+        .areas(area);
+
+        let intro_lines: Vec<Line> = vec![
+            Line::from(vec![
+                "> ".into(),
+                "Provide your Azure OpenAI deployment details".bold(),
+            ]),
+            "".into(),
+            Line::from(vec![
+                "  Endpoint format: ".dim(),
+                "https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT".dim().cyan(),
+            ]),
+            "".into(),
+        ];
+        Paragraph::new(intro_lines)
+            .wrap(Wrap { trim: false })
+            .render(intro_area, buf);
+
+        // Field 1: Endpoint URL
+        let endpoint_style = if current_step == 0 {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().dim()
+        };
+        let endpoint_content = if state.endpoint.is_empty() {
+            if current_step == 0 {
+                vec!["https://my-resource.openai.azure.com/openai/deployments/my-model".dim()].into()
+            } else {
+                vec!["Not configured".dim()].into()
+            }
+        } else {
+            Line::from(state.endpoint.clone())
+        };
+        Paragraph::new(endpoint_content)
+            .wrap(Wrap { trim: false })
+            .block(
+                Block::default()
+                    .title("1. Deployment Endpoint URL")
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(endpoint_style),
+            )
+            .render(endpoint_area, buf);
+
+        // Field 2: API Key
+        let key_style = if current_step == 1 {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().dim()
+        };
+        let key_content = if state.api_key.is_empty() {
+            if current_step == 1 {
+                vec!["Paste your Azure API key".dim()].into()
+            } else {
+                vec!["Not configured".dim()].into()
+            }
+        } else {
+            Line::from("*".repeat(state.api_key.len()))
+        };
+        Paragraph::new(key_content)
+            .wrap(Wrap { trim: false })
+            .block(
+                Block::default()
+                    .title("2. API Key")
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(key_style),
+            )
+            .render(key_area, buf);
+
+        // Field 3: API Version (Optional)
+        let version_style = if current_step == 2 {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().dim()
+        };
+        let version_content = if state.api_version.is_empty() {
+            if current_step == 2 {
+                vec!["api-version (press Enter for default 2024-05-01-preview)".dim()].into()
+            } else {
+                vec!["Default (2024-05-01-preview)".dim()].into()
+            }
+        } else {
+            Line::from(state.api_version.clone())
+        };
+        Paragraph::new(version_content)
+            .wrap(Wrap { trim: false })
+            .block(
+                Block::default()
+                    .title("3. API Version (Optional)")
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(version_style),
+            )
+            .render(version_area, buf);
+
+        // Footer / Controls
+        let mut footer_lines: Vec<Line> = vec![
+            Line::from(vec![
+                "  Press ".dim(),
+                self.confirm_binding().into(),
+                " to continue/save".dim(),
+            ]),
+            Line::from(vec![
+                "  Press ".dim(),
+                self.cancel_binding().into(),
+                " to go back".dim(),
+            ]),
+        ];
+        if let Some(error) = self.error_message() {
+            footer_lines.push("".into());
+            footer_lines.push(error.red().into());
+        }
+        Paragraph::new(footer_lines)
+            .wrap(Wrap { trim: false })
+            .render(footer_area, buf);
     }
 
     fn render_api_key_entry(&self, area: Rect, buf: &mut Buffer, state: &ApiKeyInputState) {
@@ -842,6 +1029,218 @@ impl AuthModeWidget {
         self.request_frame.schedule_frame();
     }
 
+    fn start_azure_entry(&mut self) {
+        if !self.is_api_login_allowed() {
+            self.disallow_api_login();
+            return;
+        }
+        self.set_error(/*message*/ None);
+        let mut guard = self.sign_in_state.write().unwrap();
+        *guard = SignInState::AzureEndpointEntry(AzureInputState::default());
+        drop(guard);
+        self.request_frame.schedule_frame();
+    }
+
+    fn handle_azure_entry_key_event(&mut self, key_event: &KeyEvent) -> bool {
+        let mut should_save: Option<AzureInputState> = None;
+        let mut should_request_frame = false;
+
+        {
+            let mut guard = self.sign_in_state.write().unwrap();
+            match &mut *guard {
+                SignInState::AzureEndpointEntry(state) => {
+                    if keys::CANCEL.is_pressed(*key_event) {
+                        *guard = SignInState::PickMode;
+                        self.set_error(/*message*/ None);
+                        should_request_frame = true;
+                    } else if keys::CONFIRM.is_pressed(*key_event) {
+                        let trimmed = state.endpoint.trim().to_string();
+                        if trimmed.is_empty() {
+                            self.set_error(Some("Endpoint URL cannot be empty".to_string()));
+                        } else if !trimmed.starts_with("https://") && !trimmed.starts_with("http://") {
+                            self.set_error(Some(
+                                "Endpoint must start with https:// (e.g. https://my-resource.openai.azure.com/openai/deployments/my-model)".to_string(),
+                            ));
+                        } else {
+                            state.endpoint = trimmed;
+                            *guard = SignInState::AzureApiKeyEntry(state.clone());
+                            self.set_error(/*message*/ None);
+                        }
+                        should_request_frame = true;
+                    } else {
+                        match key_event.code {
+                            KeyCode::Backspace => {
+                                state.endpoint.pop();
+                                self.set_error(/*message*/ None);
+                                should_request_frame = true;
+                            }
+                            KeyCode::Char(c)
+                                if key_event.kind == KeyEventKind::Press
+                                    && !key_event.modifiers.contains(KeyModifiers::SUPER)
+                                    && !key_event.modifiers.contains(KeyModifiers::CONTROL)
+                                    && !key_event.modifiers.contains(KeyModifiers::ALT) =>
+                            {
+                                state.endpoint.push(c);
+                                self.set_error(/*message*/ None);
+                                should_request_frame = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                SignInState::AzureApiKeyEntry(state) => {
+                    if keys::CANCEL.is_pressed(*key_event) {
+                        *guard = SignInState::AzureEndpointEntry(state.clone());
+                        self.set_error(/*message*/ None);
+                        should_request_frame = true;
+                    } else if keys::CONFIRM.is_pressed(*key_event) {
+                        let trimmed = state.api_key.trim().to_string();
+                        if trimmed.is_empty() {
+                            self.set_error(Some("API Key cannot be empty".to_string()));
+                        } else {
+                            state.api_key = trimmed;
+                            *guard = SignInState::AzureApiVersionEntry(state.clone());
+                            self.set_error(/*message*/ None);
+                        }
+                        should_request_frame = true;
+                    } else {
+                        match key_event.code {
+                            KeyCode::Backspace => {
+                                state.api_key.pop();
+                                self.set_error(/*message*/ None);
+                                should_request_frame = true;
+                            }
+                            KeyCode::Char(c)
+                                if key_event.kind == KeyEventKind::Press
+                                    && !key_event.modifiers.contains(KeyModifiers::SUPER)
+                                    && !key_event.modifiers.contains(KeyModifiers::CONTROL)
+                                    && !key_event.modifiers.contains(KeyModifiers::ALT) =>
+                            {
+                                state.api_key.push(c);
+                                self.set_error(/*message*/ None);
+                                should_request_frame = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                SignInState::AzureApiVersionEntry(state) => {
+                    if keys::CANCEL.is_pressed(*key_event) {
+                        *guard = SignInState::AzureApiKeyEntry(state.clone());
+                        self.set_error(/*message*/ None);
+                        should_request_frame = true;
+                    } else if keys::CONFIRM.is_pressed(*key_event) {
+                        let trimmed = state.api_version.trim().to_string();
+                        let final_version = if trimmed.is_empty() {
+                            "2024-05-01-preview".to_string()
+                        } else {
+                            trimmed
+                        };
+                        state.api_version = final_version;
+                        should_save = Some(state.clone());
+                    } else {
+                        match key_event.code {
+                            KeyCode::Backspace => {
+                                state.api_version.pop();
+                                self.set_error(/*message*/ None);
+                                should_request_frame = true;
+                            }
+                            KeyCode::Char(c)
+                                if key_event.kind == KeyEventKind::Press
+                                    && !key_event.modifiers.contains(KeyModifiers::SUPER)
+                                    && !key_event.modifiers.contains(KeyModifiers::CONTROL)
+                                    && !key_event.modifiers.contains(KeyModifiers::ALT) =>
+                            {
+                                state.api_version.push(c);
+                                self.set_error(/*message*/ None);
+                                should_request_frame = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => return false,
+            }
+        }
+
+        if let Some(azure_state) = should_save {
+            self.save_azure_details(azure_state);
+        } else if should_request_frame {
+            self.request_frame.schedule_frame();
+        }
+        true
+    }
+
+    fn handle_azure_entry_paste(&mut self, pasted: String) -> bool {
+        let trimmed = pasted.trim();
+        if trimmed.is_empty() {
+            return false;
+        }
+
+        let mut guard = self.sign_in_state.write().unwrap();
+        match &mut *guard {
+            SignInState::AzureEndpointEntry(state) => {
+                state.endpoint.push_str(trimmed);
+                self.set_error(/*message*/ None);
+            }
+            SignInState::AzureApiKeyEntry(state) => {
+                state.api_key.push_str(trimmed);
+                self.set_error(/*message*/ None);
+            }
+            SignInState::AzureApiVersionEntry(state) => {
+                state.api_version.push_str(trimmed);
+                self.set_error(/*message*/ None);
+            }
+            _ => return false,
+        }
+
+        drop(guard);
+        self.request_frame.schedule_frame();
+        true
+    }
+
+    fn save_azure_details(&mut self, azure_state: AzureInputState) {
+        if !self.is_api_login_allowed() {
+            self.disallow_api_login();
+            return;
+        }
+        self.set_error(/*message*/ None);
+        let request_handle = self.app_server_request_handle.clone();
+        let sign_in_state = self.sign_in_state.clone();
+        let error = self.error.clone();
+        let request_frame = self.request_frame.clone();
+        tokio::spawn(async move {
+            match request_handle
+                .request_typed::<LoginAccountResponse>(ClientRequest::LoginAccount {
+                    request_id: onboarding_request_id(),
+                    params: LoginAccountParams::AzureOpenAi {
+                        api_key: azure_state.api_key.clone(),
+                        endpoint: azure_state.endpoint.clone(),
+                        api_version: Some(azure_state.api_version.clone()),
+                    },
+                })
+                .await
+            {
+                Ok(LoginAccountResponse::AzureOpenAi {}) => {
+                    *error.write().unwrap() = None;
+                    *sign_in_state.write().unwrap() = SignInState::AzureConfigured;
+                }
+                Ok(other) => {
+                    *error.write().unwrap() = Some(format!(
+                        "Unexpected account/login/start response: {other:?}"
+                    ));
+                    *sign_in_state.write().unwrap() = SignInState::AzureApiVersionEntry(azure_state);
+                }
+                Err(err) => {
+                    *error.write().unwrap() = Some(format!("Failed to save Azure details: {err}"));
+                    *sign_in_state.write().unwrap() = SignInState::AzureApiVersionEntry(azure_state);
+                }
+            }
+            request_frame.schedule_frame();
+        });
+        self.request_frame.schedule_frame();
+    }
+
     fn handle_existing_chatgpt_login(&mut self) -> bool {
         if matches!(
             self.login_status,
@@ -958,8 +1357,13 @@ impl StepStateProvider for AuthModeWidget {
             | SignInState::ApiKeyEntry(_)
             | SignInState::ChatGptContinueInBrowser(_)
             | SignInState::ChatGptDeviceCode(_)
-            | SignInState::ChatGptSuccessMessage => StepState::InProgress,
-            SignInState::ChatGptSuccess | SignInState::ApiKeyConfigured => StepState::Complete,
+            | SignInState::ChatGptSuccessMessage
+            | SignInState::AzureEndpointEntry(_)
+            | SignInState::AzureApiKeyEntry(_)
+            | SignInState::AzureApiVersionEntry(_) => StepState::InProgress,
+            SignInState::ChatGptSuccess
+            | SignInState::ApiKeyConfigured
+            | SignInState::AzureConfigured => StepState::Complete,
         }
     }
 }
@@ -988,6 +1392,18 @@ impl WidgetRef for AuthModeWidget {
             }
             SignInState::ApiKeyConfigured => {
                 self.render_api_key_configured(area, buf);
+            }
+            SignInState::AzureEndpointEntry(state) => {
+                self.render_azure_entry(area, buf, state, 0);
+            }
+            SignInState::AzureApiKeyEntry(state) => {
+                self.render_azure_entry(area, buf, state, 1);
+            }
+            SignInState::AzureApiVersionEntry(state) => {
+                self.render_azure_entry(area, buf, state, 2);
+            }
+            SignInState::AzureConfigured => {
+                self.render_azure_configured(area, buf);
             }
         }
     }

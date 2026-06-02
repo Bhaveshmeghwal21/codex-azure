@@ -11,7 +11,10 @@ use codex_model_provider_info::ModelProviderInfo;
 use http::HeaderMap;
 use http::HeaderValue;
 
+use codex_api::is_azure_responses_provider;
+
 use crate::bearer_auth_provider::BearerAuthProvider;
+
 
 #[derive(Clone, Debug)]
 struct AgentIdentityAuthProvider {
@@ -92,12 +95,23 @@ pub(crate) fn resolve_provider_auth(
 fn bearer_auth_for_provider(
     provider: &ModelProviderInfo,
 ) -> codex_protocol::error::Result<Option<BearerAuthProvider>> {
+    let is_azure = is_azure_responses_provider(&provider.name, provider.base_url.as_deref());
     if let Some(api_key) = provider.api_key()? {
-        return Ok(Some(BearerAuthProvider::new(api_key)));
+        return Ok(Some(BearerAuthProvider {
+            token: Some(api_key),
+            account_id: None,
+            is_fedramp_account: false,
+            is_azure,
+        }));
     }
 
     if let Some(token) = provider.experimental_bearer_token.clone() {
-        return Ok(Some(BearerAuthProvider::new(token)));
+        return Ok(Some(BearerAuthProvider {
+            token: Some(token),
+            account_id: None,
+            is_fedramp_account: false,
+            is_azure,
+        }));
     }
 
     Ok(None)
@@ -114,6 +128,7 @@ pub fn auth_provider_from_auth(auth: &CodexAuth) -> SharedAuthProvider {
                 token: auth.get_token().ok(),
                 account_id: auth.get_account_id(),
                 is_fedramp_account: auth.is_fedramp_account(),
+                is_azure: false,
             })
         }
     }
