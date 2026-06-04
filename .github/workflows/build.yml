@@ -1,4 +1,4 @@
-name: Build Codex TUI
+name: Build Codex CLI
 
 on:
   push:
@@ -27,13 +27,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Build codex-tui
+      - name: Build codex CLI
         working-directory: codex-rs
-        run: cargo build --release -p codex-tui
+        run: cargo build --release -p codex-cli --bin codex
 
       - name: Upload codex.exe artifact
         uses: actions/upload-artifact@v4
         with:
           name: codex-exe
-          path: codex-rs/target/release/codex-tui.exe
+          path: codex-rs/target/release/codex.exe
           if-no-files-found: error
