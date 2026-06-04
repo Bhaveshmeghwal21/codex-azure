@@ -422,7 +422,9 @@ impl AccountRequestProcessor {
             .with_edits(edits)
             .apply_blocking()
         {
-            return Err(internal_error(format!("failed to update config.toml: {err}")));
+            return Err(internal_error(format!(
+                "failed to update config.toml: {err}"
+            )));
         }
 
         self.auth_manager.reload().await;

@@ -155,6 +155,8 @@ impl SlashCommand {
                 | SlashCommand::Goal
                 | SlashCommand::Ide
                 | SlashCommand::Keymap
+                | SlashCommand::Agent
+                | SlashCommand::MultiAgents
                 | SlashCommand::Mcp
                 | SlashCommand::Raw
                 | SlashCommand::Pets
@@ -285,6 +287,8 @@ mod tests {
         assert!(SlashCommand::Raw.available_during_task());
         assert!(SlashCommand::Raw.available_in_side_conversation());
         assert!(SlashCommand::Raw.supports_inline_args());
+        assert!(SlashCommand::Agent.supports_inline_args());
+        assert!(SlashCommand::MultiAgents.supports_inline_args());
     }
 
     #[test]

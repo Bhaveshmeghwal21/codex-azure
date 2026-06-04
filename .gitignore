@@ -32,6 +32,8 @@ result
 # cli tools
 CLAUDE.md
 .claude/
+.codex/
+.antigravitycli/
 AGENTS.override.md
 
 # caches

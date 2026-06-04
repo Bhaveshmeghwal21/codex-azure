@@ -130,9 +130,7 @@ mod tests {
         auth.add_auth_headers(&mut headers);
 
         assert_eq!(
-            headers
-                .get("api-key")
-                .and_then(|value| value.to_str().ok()),
+            headers.get("api-key").and_then(|value| value.to_str().ok()),
             Some("azure-key-123")
         );
         assert!(headers.get(http::header::AUTHORIZATION).is_none());

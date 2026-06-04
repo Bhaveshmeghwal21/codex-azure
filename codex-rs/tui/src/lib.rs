@@ -85,6 +85,7 @@ use uuid::Uuid;
 pub(crate) use codex_app_server_client::legacy_core;
 
 mod additional_dirs;
+mod agent_worker_command;
 mod app;
 mod app_backtrack;
 mod app_command;

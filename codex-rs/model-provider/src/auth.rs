@@ -15,7 +15,6 @@ use codex_api::is_azure_responses_provider;
 
 use crate::bearer_auth_provider::BearerAuthProvider;
 
-
 #[derive(Clone, Debug)]
 struct AgentIdentityAuthProvider {
     auth: codex_login::auth::AgentIdentityAuth,

@@ -7,6 +7,8 @@
 
 use super::goal_validation::GoalObjectiveValidationSource;
 use super::*;
+use crate::agent_worker_command;
+use crate::agent_worker_command::AgentWorkerCommand;
 use crate::app_event::ThreadGoalSetMode;
 use crate::bottom_pane::prompt_args::parse_slash_name;
 use crate::bottom_pane::slash_commands::BuiltinCommandFlags;
@@ -796,6 +798,9 @@ impl ChatWidget {
                 );
                 self.request_side_conversation(parent_thread_id, Some(user_message));
             }
+            SlashCommand::Agent | SlashCommand::MultiAgents => {
+                self.dispatch_agent_command_args(trimmed);
+            }
             SlashCommand::Review if !trimmed.is_empty() => {
                 self.submit_op(AppCommand::review(ReviewTarget::Custom {
                     instructions: args,
@@ -824,6 +829,26 @@ impl ChatWidget {
         }
         if source == SlashCommandDispatchSource::Live && cmd != SlashCommand::Goal {
             self.bottom_pane.drain_pending_submission_state();
+        }
+    }
+
+    fn dispatch_agent_command_args(&mut self, trimmed: &str) {
+        match agent_worker_command::parse_agent_worker_command(trimmed) {
+            Ok(AgentWorkerCommand::List) => {
+                self.app_event_tx.send(AppEvent::OpenAgentPicker);
+            }
+            Ok(AgentWorkerCommand::Spawn(kind)) => {
+                let task = trimmed
+                    .split_once(char::is_whitespace)
+                    .map(|(_, task)| task.trim())
+                    .unwrap_or_default();
+                let prompt = agent_worker_command::build_agent_worker_prompt(kind, task);
+                self.submit_user_message_with_shell_escape_policy(
+                    prompt.into(),
+                    ShellEscapePolicy::Disallow,
+                );
+            }
+            Err(usage) => self.add_error_message(usage.to_string()),
         }
     }
 

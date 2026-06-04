@@ -674,8 +674,20 @@ impl AuthModeWidget {
             .render(area, buf);
     }
 
-    fn render_azure_entry(&self, area: Rect, buf: &mut Buffer, state: &AzureInputState, current_step: usize) {
-        let [intro_area, endpoint_area, key_area, version_area, footer_area] = Layout::vertical([
+    fn render_azure_entry(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        state: &AzureInputState,
+        current_step: usize,
+    ) {
+        let [
+            intro_area,
+            endpoint_area,
+            key_area,
+            version_area,
+            footer_area,
+        ] = Layout::vertical([
             Constraint::Min(3),
             Constraint::Length(3),
             Constraint::Length(3),
@@ -692,7 +704,9 @@ impl AuthModeWidget {
             "".into(),
             Line::from(vec![
                 "  Endpoint format: ".dim(),
-                "https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT".dim().cyan(),
+                "https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT"
+                    .dim()
+                    .cyan(),
             ]),
             "".into(),
         ];
@@ -708,7 +722,8 @@ impl AuthModeWidget {
         };
         let endpoint_content = if state.endpoint.is_empty() {
             if current_step == 0 {
-                vec!["https://my-resource.openai.azure.com/openai/deployments/my-model".dim()].into()
+                vec!["https://my-resource.openai.azure.com/openai/deployments/my-model".dim()]
+                    .into()
             } else {
                 vec!["Not configured".dim()].into()
             }
@@ -1057,7 +1072,9 @@ impl AuthModeWidget {
                         let trimmed = state.endpoint.trim().to_string();
                         if trimmed.is_empty() {
                             self.set_error(Some("Endpoint URL cannot be empty".to_string()));
-                        } else if !trimmed.starts_with("https://") && !trimmed.starts_with("http://") {
+                        } else if !trimmed.starts_with("https://")
+                            && !trimmed.starts_with("http://")
+                        {
                             self.set_error(Some(
                                 "Endpoint must start with https:// (e.g. https://my-resource.openai.azure.com/openai/deployments/my-model)".to_string(),
                             ));
@@ -1229,11 +1246,13 @@ impl AuthModeWidget {
                     *error.write().unwrap() = Some(format!(
                         "Unexpected account/login/start response: {other:?}"
                     ));
-                    *sign_in_state.write().unwrap() = SignInState::AzureApiVersionEntry(azure_state);
+                    *sign_in_state.write().unwrap() =
+                        SignInState::AzureApiVersionEntry(azure_state);
                 }
                 Err(err) => {
                     *error.write().unwrap() = Some(format!("Failed to save Azure details: {err}"));
-                    *sign_in_state.write().unwrap() = SignInState::AzureApiVersionEntry(azure_state);
+                    *sign_in_state.write().unwrap() =
+                        SignInState::AzureApiVersionEntry(azure_state);
                 }
             }
             request_frame.schedule_frame();

@@ -39,7 +39,7 @@ impl EncodedImageFormat {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PastedImageInfo {
     pub width: u32,
     pub height: u32,
@@ -141,7 +141,11 @@ pub fn paste_image_to_temp_png() -> Result<(PathBuf, PastedImageInfo), PasteImag
             {
                 try_wsl_clipboard_fallback(&e).or(Err(e))
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(target_os = "windows")]
+            {
+                try_windows_clipboard_fallback(&e).or(Err(e))
+            }
+            #[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
             {
                 Err(e)
             }
@@ -225,6 +229,86 @@ fn try_dump_windows_clipboard_image() -> Option<String> {
             }
         }
     }
+    None
+}
+
+/// Attempt Windows PowerShell clipboard image paste fallback.
+///
+/// Some Windows clipboard producers expose image-only content in a format that
+/// `arboard` may not read reliably. Ask PowerShell to materialize the clipboard
+/// image as a temporary PNG, then attach that local file through the existing
+/// local image pipeline.
+#[cfg(target_os = "windows")]
+fn try_windows_clipboard_fallback(
+    error: &PasteImageError,
+) -> Result<(PathBuf, PastedImageInfo), PasteImageError> {
+    try_windows_clipboard_fallback_with(error, try_dump_windows_clipboard_image)
+}
+
+#[cfg(target_os = "windows")]
+fn try_windows_clipboard_fallback_with(
+    error: &PasteImageError,
+    dump_clipboard_image: impl FnOnce() -> Option<PathBuf>,
+) -> Result<(PathBuf, PastedImageInfo), PasteImageError> {
+    use PasteImageError::ClipboardUnavailable;
+    use PasteImageError::NoImage;
+
+    if !matches!(error, ClipboardUnavailable(_) | NoImage(_)) {
+        return Err(error.clone());
+    }
+
+    tracing::debug!("attempting Windows PowerShell clipboard fallback");
+    let Some(path) = dump_clipboard_image() else {
+        return Err(error.clone());
+    };
+
+    let Ok((width, height)) = image::image_dimensions(&path) else {
+        return Err(error.clone());
+    };
+
+    Ok((
+        path,
+        PastedImageInfo {
+            width,
+            height,
+            encoded_format: EncodedImageFormat::Png,
+        },
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn try_dump_windows_clipboard_image() -> Option<PathBuf> {
+    let script = r#"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $img = Get-Clipboard -Format Image -ErrorAction SilentlyContinue; if ($null -eq $img) { exit 1 }; $p = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), 'png'); $img.Save($p, [System.Drawing.Imaging.ImageFormat]::Png); [Console]::Out.WriteLine($p)"#;
+
+    for (cmd, args) in [
+        (
+            "powershell.exe",
+            vec!["-NoProfile", "-Sta", "-Command", script],
+        ),
+        ("pwsh.exe", vec!["-NoProfile", "-Command", script]),
+        ("powershell", vec!["-NoProfile", "-Sta", "-Command", script]),
+        ("pwsh", vec!["-NoProfile", "-Command", script]),
+    ] {
+        match std::process::Command::new(cmd).args(args).output() {
+            Ok(output) if output.status.success() => {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    let path = PathBuf::from(path);
+                    if path.is_file() {
+                        tracing::debug!("{} saved clipboard image to {}", cmd, path.display());
+                        return Some(path);
+                    }
+                }
+            }
+            Ok(output) => {
+                tracing::debug!("{} returned non-zero status: {}", cmd, output.status);
+            }
+            Err(err) => {
+                tracing::debug!("{} not executable: {}", cmd, err);
+            }
+        }
+    }
+
     None
 }
 
@@ -563,6 +647,38 @@ mod pasted_paths_tests {
         assert_eq!(
             result,
             PathBuf::from("/mnt/c/Users/Alice/Pictures/example image.png")
+        );
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod windows_clipboard_fallback_tests {
+    use super::*;
+
+    #[test]
+    fn windows_clipboard_fallback_returns_dumped_image_path_and_info() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let image_path = tmp.path().join("clipboard.png");
+        image::RgbaImage::from_pixel(2, 3, image::Rgba([255, 0, 0, 255]))
+            .save(&image_path)
+            .expect("write test image");
+
+        let result = try_windows_clipboard_fallback_with(
+            &PasteImageError::NoImage("native clipboard had no image".to_string()),
+            || Some(image_path.clone()),
+        )
+        .expect("fallback should use dumped image");
+
+        assert_eq!(
+            result,
+            (
+                image_path,
+                PastedImageInfo {
+                    width: 2,
+                    height: 3,
+                    encoded_format: EncodedImageFormat::Png,
+                },
+            )
         );
     }
 }
