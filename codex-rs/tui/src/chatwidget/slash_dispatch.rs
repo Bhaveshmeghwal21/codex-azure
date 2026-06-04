@@ -362,6 +362,9 @@ impl ChatWidget {
             SlashCommand::Copy => {
                 self.copy_last_agent_markdown();
             }
+            SlashCommand::PasteImage => {
+                self.paste_clipboard_image();
+            }
             SlashCommand::Raw => {
                 let enabled = self.toggle_raw_output_mode_and_notify();
                 self.emit_raw_output_mode_changed(enabled);
@@ -834,8 +837,11 @@ impl ChatWidget {
 
     fn dispatch_agent_command_args(&mut self, trimmed: &str) {
         match agent_worker_command::parse_agent_worker_command(trimmed) {
-            Ok(AgentWorkerCommand::List) => {
+            Ok(AgentWorkerCommand::Picker) => {
                 self.app_event_tx.send(AppEvent::OpenAgentPicker);
+            }
+            Ok(AgentWorkerCommand::Help) => {
+                self.add_info_message(agent_worker_command::AGENT_USAGE.to_string(), None);
             }
             Ok(AgentWorkerCommand::Spawn(kind)) => {
                 let task = trimmed
@@ -996,6 +1002,7 @@ impl ChatWidget {
             | SlashCommand::Plugins
             | SlashCommand::Rollout
             | SlashCommand::Copy
+            | SlashCommand::PasteImage
             | SlashCommand::Raw
             | SlashCommand::Vim
             | SlashCommand::Diff

@@ -7,7 +7,8 @@
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AgentWorkerCommand {
-    List,
+    Picker,
+    Help,
     Spawn(AgentWorkerKind),
 }
 
@@ -26,8 +27,11 @@ pub(crate) const AGENT_USAGE: &str =
 
 pub(crate) fn parse_agent_worker_command(input: &str) -> Result<AgentWorkerCommand, &'static str> {
     let trimmed = input.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("list") {
-        return Ok(AgentWorkerCommand::List);
+    if trimmed.is_empty() {
+        return Ok(AgentWorkerCommand::Picker);
+    }
+    if trimmed.eq_ignore_ascii_case("list") || trimmed.eq_ignore_ascii_case("help") {
+        return Ok(AgentWorkerCommand::Help);
     }
 
     let (verb, task) = split_once_whitespace(trimmed).ok_or(AGENT_USAGE)?;
@@ -136,11 +140,14 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn parse_empty_and_list_open_picker() {
-        assert_eq!(parse_agent_worker_command(""), Ok(AgentWorkerCommand::List));
+    fn parse_empty_opens_picker_and_list_shows_help() {
+        assert_eq!(
+            parse_agent_worker_command(""),
+            Ok(AgentWorkerCommand::Picker)
+        );
         assert_eq!(
             parse_agent_worker_command(" list "),
-            Ok(AgentWorkerCommand::List)
+            Ok(AgentWorkerCommand::Help)
         );
     }
 

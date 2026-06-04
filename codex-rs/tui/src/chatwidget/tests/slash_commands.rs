@@ -88,6 +88,44 @@ fn next_add_to_history_event(rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEv
 }
 
 #[tokio::test]
+async fn slash_agent_list_shows_worker_usage_instead_of_picker() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.5")).await;
+
+    chat.dispatch_command_with_args(SlashCommand::Agent, "list".to_string(), Vec::new());
+
+    let history = drain_insert_history(&mut rx);
+    let rendered = history
+        .iter()
+        .map(|lines| lines_to_single_string(lines))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("/agent [list|spawn|explore|review|test|implement|auto]"));
+}
+
+#[tokio::test]
+async fn paste_clipboard_image_helper_attaches_dumped_image() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.5")).await;
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let image_path = tmp.path().join("clipboard.png");
+    image::RgbaImage::from_pixel(2, 3, image::Rgba([255, 0, 0, 255]))
+        .save(&image_path)
+        .expect("write image");
+
+    chat.paste_clipboard_image_with(|| {
+        Ok((
+            image_path.clone(),
+            crate::clipboard_paste::PastedImageInfo {
+                width: 2,
+                height: 3,
+                encoded_format: crate::clipboard_paste::EncodedImageFormat::Png,
+            },
+        ))
+    });
+
+    assert!(chat.bottom_pane.composer_text().contains("[Image #1]"));
+}
+
+#[tokio::test]
 async fn service_tier_commands_lowercase_catalog_names() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
     let mut preset = get_available_model(&chat, "gpt-5.4");

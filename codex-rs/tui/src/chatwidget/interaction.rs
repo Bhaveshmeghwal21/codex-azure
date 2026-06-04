@@ -2,6 +2,9 @@
 
 use super::*;
 
+use crate::clipboard_paste::PasteImageError;
+use crate::clipboard_paste::PastedImageInfo;
+
 impl ChatWidget {
     pub(crate) fn handle_key_event(&mut self, key_event: KeyEvent) {
         if self.bottom_pane.has_active_view()
@@ -72,23 +75,7 @@ impl ChatWidget {
             } if modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
                 && c.eq_ignore_ascii_case(&'v') =>
             {
-                match paste_image_to_temp_png() {
-                    Ok((path, info)) => {
-                        tracing::debug!(
-                            "pasted image size={}x{} format={}",
-                            info.width,
-                            info.height,
-                            info.encoded_format.label()
-                        );
-                        self.attach_image(path);
-                    }
-                    Err(err) => {
-                        tracing::warn!("failed to paste image: {err}");
-                        self.add_to_history(history_cell::new_error_event(format!(
-                            "Failed to paste image: {err}",
-                        )));
-                    }
-                }
+                self.paste_clipboard_image();
                 return;
             }
             other if other.kind == KeyEventKind::Press => {
@@ -172,6 +159,33 @@ impl ChatWidget {
         tracing::info!("attach_image path={path:?}");
         self.bottom_pane.attach_image(path);
         self.request_redraw();
+    }
+
+    pub(crate) fn paste_clipboard_image(&mut self) {
+        self.paste_clipboard_image_with(paste_image_to_temp_png);
+    }
+
+    pub(crate) fn paste_clipboard_image_with(
+        &mut self,
+        paste_image: impl FnOnce() -> Result<(PathBuf, PastedImageInfo), PasteImageError>,
+    ) {
+        match paste_image() {
+            Ok((path, info)) => {
+                tracing::debug!(
+                    "pasted image size={}x{} format={}",
+                    info.width,
+                    info.height,
+                    info.encoded_format.label()
+                );
+                self.attach_image(path);
+            }
+            Err(err) => {
+                tracing::warn!("failed to paste image: {err}");
+                self.add_to_history(history_cell::new_error_event(format!(
+                    "Failed to paste image: {err}",
+                )));
+            }
+        }
     }
 
     pub(crate) fn composer_text_with_pending(&self) -> String {

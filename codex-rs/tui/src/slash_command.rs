@@ -41,6 +41,8 @@ pub enum SlashCommand {
     Side,
     Btw,
     Copy,
+    #[strum(to_string = "paste-image")]
+    PasteImage,
     Raw,
     Diff,
     Mention,
@@ -92,6 +94,7 @@ impl SlashCommand {
             SlashCommand::Fork => "fork the current chat",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Copy => "copy last response as markdown",
+            SlashCommand::PasteImage => "attach image data from the system clipboard",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
             SlashCommand::Diff => "show git diff (including untracked files)",
             SlashCommand::Mention => "mention a file",
@@ -172,6 +175,7 @@ impl SlashCommand {
         matches!(
             self,
             SlashCommand::Copy
+                | SlashCommand::PasteImage
                 | SlashCommand::Raw
                 | SlashCommand::Diff
                 | SlashCommand::Mention
@@ -206,6 +210,7 @@ impl SlashCommand {
             | SlashCommand::MemoryUpdate => false,
             SlashCommand::Diff
             | SlashCommand::Copy
+            | SlashCommand::PasteImage
             | SlashCommand::Raw
             | SlashCommand::Rename
             | SlashCommand::Mention
@@ -241,6 +246,7 @@ impl SlashCommand {
         match self {
             SlashCommand::SandboxReadRoot => cfg!(target_os = "windows"),
             SlashCommand::Copy => !cfg!(target_os = "android"),
+            SlashCommand::PasteImage => !cfg!(target_os = "android"),
             SlashCommand::Rollout | SlashCommand::TestApproval => cfg!(debug_assertions),
             _ => true,
         }
