@@ -169,7 +169,35 @@ impl ChatWidget {
         &mut self,
         paste_image: impl FnOnce() -> Result<(PathBuf, PastedImageInfo), PasteImageError>,
     ) {
-        match paste_image() {
+        match self.attach_pasted_clipboard_image(paste_image()) {
+            Ok(()) => {}
+            Err(err) => {
+                tracing::warn!("failed to paste image: {err}");
+                self.add_to_history(history_cell::new_error_event(format!(
+                    "Failed to paste image: {err}",
+                )));
+            }
+        }
+    }
+
+    pub(crate) fn try_paste_clipboard_image_with(
+        &mut self,
+        paste_image: impl FnOnce() -> Result<(PathBuf, PastedImageInfo), PasteImageError>,
+    ) -> bool {
+        match self.attach_pasted_clipboard_image(paste_image()) {
+            Ok(()) => true,
+            Err(err) => {
+                tracing::debug!("clipboard paste event did not include an image: {err}");
+                false
+            }
+        }
+    }
+
+    fn attach_pasted_clipboard_image(
+        &mut self,
+        result: Result<(PathBuf, PastedImageInfo), PasteImageError>,
+    ) -> Result<(), PasteImageError> {
+        match result {
             Ok((path, info)) => {
                 tracing::debug!(
                     "pasted image size={}x{} format={}",
@@ -178,13 +206,9 @@ impl ChatWidget {
                     info.encoded_format.label()
                 );
                 self.attach_image(path);
+                Ok(())
             }
-            Err(err) => {
-                tracing::warn!("failed to paste image: {err}");
-                self.add_to_history(history_cell::new_error_event(format!(
-                    "Failed to paste image: {err}",
-                )));
-            }
+            Err(err) => Err(err),
         }
     }
 
@@ -326,6 +350,15 @@ impl ChatWidget {
     }
 
     pub(crate) fn handle_paste(&mut self, text: String) {
+        #[cfg(target_os = "windows")]
+        if self.bottom_pane.no_modal_or_popup_active()
+            && self.current_model_supports_images()
+            && self.try_paste_clipboard_image_with(paste_image_to_temp_png)
+        {
+            self.refresh_plan_mode_nudge();
+            return;
+        }
+
         self.bottom_pane.handle_paste(text);
         self.refresh_plan_mode_nudge();
     }

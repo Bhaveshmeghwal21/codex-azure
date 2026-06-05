@@ -119,6 +119,22 @@ pub fn paste_image_as_png() -> Result<(Vec<u8>, PastedImageInfo), PasteImageErro
 /// Convenience: write to a temp file and return its path + info.
 #[cfg(not(target_os = "android"))]
 pub fn paste_image_to_temp_png() -> Result<(PathBuf, PastedImageInfo), PasteImageError> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(path) = try_dump_windows_clipboard_image()
+            && let Ok((width, height)) = image::image_dimensions(&path)
+        {
+            return Ok((
+                path,
+                PastedImageInfo {
+                    width,
+                    height,
+                    encoded_format: EncodedImageFormat::Png,
+                },
+            ));
+        }
+    }
+
     // First attempt: read image from system clipboard via arboard (native paths or image data).
     match paste_image_as_png() {
         Ok((png, info)) => {
@@ -278,7 +294,7 @@ fn try_windows_clipboard_fallback_with(
 
 #[cfg(target_os = "windows")]
 fn try_dump_windows_clipboard_image() -> Option<PathBuf> {
-    let script = r#"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $img = Get-Clipboard -Format Image -ErrorAction SilentlyContinue; if ($null -eq $img) { exit 1 }; $p = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), 'png'); $img.Save($p, [System.Drawing.Imaging.ImageFormat]::Png); [Console]::Out.WriteLine($p)"#;
+    let script = r#"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; if (-not [System.Windows.Forms.Clipboard]::ContainsImage()) { exit 1 }; $img = [System.Windows.Forms.Clipboard]::GetImage(); if ($null -eq $img) { exit 1 }; $p = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), 'png'); $img.Save($p, [System.Drawing.Imaging.ImageFormat]::Png); [Console]::Out.WriteLine($p)"#;
 
     for (cmd, args) in [
         (

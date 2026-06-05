@@ -556,6 +556,40 @@ async fn refresh_available_models_keeps_merging_for_api_auth() {
 }
 
 #[tokio::test]
+async fn refresh_available_models_preserves_larger_bundled_context_for_api_auth() {
+    let codex_home = tempdir().expect("temp dir");
+    let mut stale_remote = remote_model("gpt-5.5", "GPT 5.5 stale", /*priority*/ 0);
+    stale_remote.context_window = Some(272_000);
+    stale_remote.max_context_window = Some(272_000);
+    stale_remote.effective_context_window_percent = 95;
+    let endpoint = Arc::new(TestModelsEndpoint {
+        has_command_auth: true,
+        uses_codex_backend: false,
+        responses: Mutex::new(vec![vec![stale_remote]].into()),
+        fetch_count: AtomicUsize::new(0),
+    });
+    let manager = openai_manager_for_tests_with_auth(
+        codex_home.path().to_path_buf(),
+        endpoint.clone(),
+        Some(AuthManager::from_auth_for_testing(CodexAuth::from_api_key(
+            "test-api-key",
+        ))),
+    );
+
+    manager
+        .refresh_available_models(RefreshStrategy::OnlineIfUncached)
+        .await
+        .expect("refresh succeeds");
+
+    let model_info = manager
+        .get_model_info("gpt-5.5", &ModelsManagerConfig::default())
+        .await;
+    assert_eq!(model_info.context_window, Some(1_050_000));
+    assert_eq!(model_info.max_context_window, Some(1_050_000));
+    assert_eq!(endpoint.fetch_count(), 1, "expected a single model fetch");
+}
+
+#[tokio::test]
 async fn refresh_available_models_uses_cache_when_fresh() {
     let remote_models = vec![remote_model("cached", "Cached", /*priority*/ 5)];
     let codex_home = tempdir().expect("temp dir");

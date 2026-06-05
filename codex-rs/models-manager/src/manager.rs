@@ -344,7 +344,10 @@ impl OpenAiModelsManager {
                 .iter()
                 .position(|existing| existing.slug == model.slug)
             {
-                existing_models[existing_index] = model;
+                existing_models[existing_index] = merge_remote_model_with_bundled_metadata(
+                    &existing_models[existing_index],
+                    model,
+                );
             } else {
                 existing_models.push(model);
             }
@@ -376,6 +379,30 @@ impl OpenAiModelsManager {
             "models cache: cache entry applied"
         );
         true
+    }
+}
+
+fn merge_remote_model_with_bundled_metadata(
+    bundled: &ModelInfo,
+    mut remote: ModelInfo,
+) -> ModelInfo {
+    remote.context_window = larger_optional_i64(remote.context_window, bundled.context_window);
+    remote.max_context_window =
+        larger_optional_i64(remote.max_context_window, bundled.max_context_window);
+    remote.effective_context_window_percent = remote
+        .effective_context_window_percent
+        .max(bundled.effective_context_window_percent);
+    if remote.input_modalities.is_empty() {
+        remote.input_modalities = bundled.input_modalities.clone();
+    }
+    remote
+}
+
+fn larger_optional_i64(left: Option<i64>, right: Option<i64>) -> Option<i64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        (Some(value), None) | (None, Some(value)) => Some(value),
+        (None, None) => None,
     }
 }
 
