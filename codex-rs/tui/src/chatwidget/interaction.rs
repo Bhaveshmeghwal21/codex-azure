@@ -67,14 +67,7 @@ impl ChatWidget {
                 self.quit_shortcut_expires_at = None;
                 self.quit_shortcut_key = None;
             }
-            KeyEvent {
-                code: KeyCode::Char(c),
-                modifiers,
-                kind: KeyEventKind::Press,
-                ..
-            } if modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
-                && c.eq_ignore_ascii_case(&'v') =>
-            {
+            key_event if is_paste_image_key_event(key_event) => {
                 self.paste_clipboard_image();
                 return;
             }
@@ -519,5 +512,35 @@ impl ChatWidget {
             thread_id,
             status: AppThreadGoalStatus::Paused,
         });
+    }
+}
+
+fn is_paste_image_key_event(key_event: KeyEvent) -> bool {
+    key_hint::ctrl(KeyCode::Char('v')).is_press(key_event)
+        || key_hint::ctrl_alt(KeyCode::Char('v')).is_press(key_event)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn paste_image_shortcut_accepts_raw_ctrl_v_control_character() {
+        assert!(is_paste_image_key_event(KeyEvent::new(
+            KeyCode::Char('\u{0016}'),
+            KeyModifiers::NONE,
+        )));
+    }
+
+    #[test]
+    fn paste_image_shortcut_accepts_ctrl_v_and_ctrl_alt_v() {
+        assert!(is_paste_image_key_event(KeyEvent::new(
+            KeyCode::Char('v'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(is_paste_image_key_event(KeyEvent::new(
+            KeyCode::Char('v'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        )));
     }
 }
