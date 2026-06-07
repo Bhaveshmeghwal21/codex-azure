@@ -9,23 +9,37 @@ If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="http
 
 ---
 
+## About this fork
+
+This repository tracks Codex CLI with Azure-focused and local workflow changes on top of the upstream OpenAI project.
+
+- Azure OpenAI onboarding is available from the TUI sign-in flow. Choose **Provide your own Azure OpenAI details** and enter the deployment endpoint, API key, and optional API version.
+- The app-server account API accepts an `azureOpenAi` login request and persists an `azure` model provider in `config.toml`.
+- The TUI includes `/agent` worker commands for bounded subagent delegation: `spawn`, `explore`, `review`, `test`, `implement`, and `auto`.
+- Clipboard image paste support has been adjusted for `Ctrl+V`/paste flows in the TUI.
+- The local model catalog includes a `gpt-5.5` preset with extended context settings.
+- The root `justfile` includes Windows-aware helpers for running the Rust workspace from this checkout.
+
 ## Quickstart
 
 ### Installing and running Codex CLI
 
-Run the following on Mac or Linux to install Codex CLI:
+Use the upstream installers below when you want the official OpenAI release.
+To use the fork-specific changes in this repository, build from source instead.
+
+Run the following on Mac or Linux to install the official Codex CLI:
 
 ```shell
 curl -fsSL https://chatgpt.com/codex/install.sh | sh
 ```
 
-Run the following on Windows to install Codex CLI:
+Run the following on Windows to install the official Codex CLI:
 
 ```
 powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"
 ```
 
-Codex CLI can also be installed via the following package managers:
+The official Codex CLI can also be installed via the following package managers:
 
 ```shell
 # Install using npm
@@ -38,6 +52,23 @@ brew install --cask codex
 ```
 
 Then simply run `codex` to get started.
+
+### Building this fork from source
+
+From this checkout:
+
+```shell
+cd codex-rs
+cargo build -p codex-cli
+cargo run --bin codex
+```
+
+After making Rust changes, run the repo helpers from the repository root. The root `justfile` defaults to the `codex-rs` workspace:
+
+```shell
+just fmt
+just test -p <crate-you-changed>
+```
 
 <details>
 <summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
@@ -60,6 +91,16 @@ Each archive contains a single entry with the platform baked into the name (e.g.
 Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
 
 You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
+
+### Using Azure OpenAI in this fork
+
+Run `codex`, select **Provide your own Azure OpenAI details**, and enter:
+
+- Deployment endpoint, for example `https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT`
+- Azure OpenAI API key
+- API version, if your deployment requires one
+
+This writes the active `azure` model provider to `config.toml` so subsequent requests use the Azure endpoint directly.
 
 ## Docs
 
