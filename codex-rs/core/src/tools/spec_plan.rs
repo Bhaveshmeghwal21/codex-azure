@@ -18,6 +18,7 @@ use crate::tools::handlers::ReadMcpResourceHandler;
 use crate::tools::handlers::RequestPermissionsHandler;
 use crate::tools::handlers::RequestPluginInstallHandler;
 use crate::tools::handlers::RequestUserInputHandler;
+use crate::tools::handlers::ResearchRecordHandler;
 use crate::tools::handlers::ShellCommandHandler;
 use crate::tools::handlers::ShellCommandHandlerOptions;
 use crate::tools::handlers::TestSyncHandler;
@@ -604,6 +605,11 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
         planned_tools.add(RequestUserInputHandler {
             available_modes: request_user_input_available_modes(features),
         });
+    }
+
+    if crate::research::is_researcher_role(turn_context.session_source.get_agent_role().as_deref())
+    {
+        planned_tools.add(ResearchRecordHandler);
     }
 
     if features.enabled(Feature::RequestPermissionsTool) {

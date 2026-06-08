@@ -296,6 +296,67 @@ async fn spawn_agent_uses_explorer_role_and_preserves_approval_policy() {
 }
 
 #[tokio::test]
+async fn spawn_agent_uses_built_in_researcher_role() {
+    #[derive(Debug, Deserialize)]
+    struct SpawnAgentResult {
+        agent_id: String,
+        nickname: Option<String>,
+    }
+
+    let (mut session, mut turn) = make_session_and_context().await;
+    let manager = thread_manager();
+    session.services.agent_control = manager.agent_control();
+    let mut config = (*turn.config).clone();
+    let provider_info =
+        built_in_model_providers(/* openai_base_url */ /*openai_base_url*/ None)["ollama"].clone();
+    config.model_provider_id = "ollama".to_string();
+    config.model_provider = provider_info.clone();
+    turn.provider = create_model_provider(provider_info, turn.auth_manager.clone());
+    turn.config = Arc::new(config);
+
+    let invocation = invocation(
+        Arc::new(session),
+        Arc::new(turn),
+        "spawn_agent",
+        function_payload(json!({
+            "message": "research current RAG papers",
+            "agent_type": "researcher"
+        })),
+    );
+    let output = SpawnAgentHandler::default()
+        .handle(invocation)
+        .await
+        .expect("spawn_agent should succeed");
+    let (content, _) = expect_text_output(output);
+    let result: SpawnAgentResult =
+        serde_json::from_str(&content).expect("spawn_agent result should be json");
+    assert!(
+        result
+            .nickname
+            .as_deref()
+            .is_some_and(|nickname| !nickname.is_empty())
+    );
+
+    let child = manager
+        .get_thread(parse_agent_id(&result.agent_id))
+        .await
+        .expect("spawned researcher thread should exist");
+    let snapshot = child.config_snapshot().await;
+    let child_config = child.config().await;
+
+    assert_eq!(
+        snapshot.session_source.get_agent_role().as_deref(),
+        Some("researcher")
+    );
+    assert!(
+        child_config
+            .developer_instructions
+            .as_deref()
+            .is_some_and(|instructions| instructions.contains("research.record"))
+    );
+}
+
+#[tokio::test]
 async fn spawn_agent_fork_context_rejects_agent_type_override() {
     let (mut session, mut turn) = make_session_and_context().await;
     let role_name = install_role_with_model_override(&mut turn).await;
