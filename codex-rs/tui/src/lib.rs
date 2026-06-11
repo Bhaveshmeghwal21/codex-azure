@@ -111,6 +111,7 @@ mod audio_device {
         ))
     }
 }
+mod azure_command;
 mod bottom_pane;
 mod branch_summary;
 mod chatwidget;

@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use codex_app_server_protocol::AddCreditsNudgeCreditType;
 use codex_app_server_protocol::AddCreditsNudgeEmailStatus;
 use codex_app_server_protocol::AppInfo;
+use codex_app_server_protocol::ConfigEdit;
 use codex_app_server_protocol::MarketplaceAddResponse;
 use codex_app_server_protocol::MarketplaceRemoveResponse;
 use codex_app_server_protocol::MarketplaceUpgradeResponse;
@@ -644,6 +645,12 @@ pub(crate) enum AppEvent {
     /// Persist the selected service tier to the appropriate config.
     PersistServiceTierSelection {
         service_tier: Option<String>,
+    },
+
+    /// Persist Azure OpenAI provider settings from the `/azure` command.
+    PersistAzureProvider {
+        edits: Vec<ConfigEdit>,
+        success_message: String,
     },
 
     /// Open the device picker for a realtime microphone or speaker.

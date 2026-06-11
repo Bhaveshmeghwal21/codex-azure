@@ -25,6 +25,7 @@ pub enum SlashCommand {
     #[strum(to_string = "approve")]
     AutoReview,
     Memories,
+    Azure,
     Skills,
     Hooks,
     Review,
@@ -133,6 +134,7 @@ impl SlashCommand {
             SlashCommand::Experimental => "toggle experimental features",
             SlashCommand::AutoReview => "approve one retry of a recent auto-review denial",
             SlashCommand::Memories => "configure memory use and generation",
+            SlashCommand::Azure => "manage Azure OpenAI providers",
             SlashCommand::Mcp => "list configured MCP tools; use /mcp verbose for details",
             SlashCommand::Apps => "manage apps",
             SlashCommand::Plugins => "browse plugins",
@@ -161,6 +163,7 @@ impl SlashCommand {
                 | SlashCommand::Agent
                 | SlashCommand::MultiAgents
                 | SlashCommand::Mcp
+                | SlashCommand::Azure
                 | SlashCommand::Raw
                 | SlashCommand::Pets
                 | SlashCommand::Side
@@ -202,6 +205,7 @@ impl SlashCommand {
             | SlashCommand::SandboxReadRoot
             | SlashCommand::Experimental
             | SlashCommand::Memories
+            | SlashCommand::Azure
             | SlashCommand::Review
             | SlashCommand::Plan
             | SlashCommand::Clear

@@ -1406,6 +1406,41 @@ impl App {
                     }
                 }
             }
+            AppEvent::PersistAzureProvider {
+                edits,
+                success_message,
+            } => {
+                match crate::config_update::write_config_batch(app_server.request_handle(), edits)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(err) = self.refresh_in_memory_config_from_disk().await {
+                            tracing::warn!(
+                                error = %err,
+                                "failed to refresh TUI config after Azure provider write"
+                            );
+                            self.chat_widget.add_info_message(
+                                success_message,
+                                Some(format!(
+                                    "Saved, but TUI refresh failed: {err}. Restart Codex if the provider list looks stale."
+                                )),
+                            );
+                        } else {
+                            self.chat_widget
+                                .add_info_message(success_message, /*hint*/ None);
+                        }
+                    }
+                    Err(err) => {
+                        tracing::error!(
+                            error = %err,
+                            "failed to persist Azure provider config"
+                        );
+                        self.chat_widget.add_error_message(format!(
+                            "Failed to save Azure provider config: {err}"
+                        ));
+                    }
+                }
+            }
             AppEvent::PersistRealtimeAudioDeviceSelection { kind, name } => {
                 let builder = match kind {
                     RealtimeAudioDeviceKind::Microphone => {
