@@ -29,6 +29,8 @@ use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::sync::LazyLock;
 
+const ENCRYPTED_TOOL_OUTPUT_UNAVAILABLE: &str = "[encrypted tool output unavailable]";
+
 /// Transcript of thread history
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ContextManager {
@@ -187,6 +189,22 @@ impl ContextManager {
     pub(crate) fn replace(&mut self, items: Vec<ResponseItem>) {
         self.items = items;
         self.history_version = self.history_version.saturating_add(1);
+    }
+
+    pub(crate) fn remove_undecryptable_encrypted_content(&mut self) -> bool {
+        let mut changed = false;
+        self.items.retain_mut(|item| {
+            let sanitized = sanitize_undecryptable_encrypted_content_item(item);
+            let keep = should_keep_after_encrypted_content_sanitization(item);
+            if sanitized || !keep {
+                changed = true;
+            }
+            keep
+        });
+        if changed {
+            self.history_version = self.history_version.saturating_add(1);
+        }
+        changed
     }
 
     /// Replace image content in the last turn if it originated from a tool output.
@@ -456,6 +474,72 @@ impl ContextManager {
             }
         }
         cut_idx
+    }
+}
+
+fn sanitize_undecryptable_encrypted_content_item(item: &mut ResponseItem) -> bool {
+    match item {
+        ResponseItem::Reasoning {
+            encrypted_content, ..
+        } => encrypted_content.take().is_some(),
+        ResponseItem::Compaction { .. } => true,
+        ResponseItem::ContextCompaction { encrypted_content } => encrypted_content.take().is_some(),
+        ResponseItem::FunctionCallOutput { output, .. }
+        | ResponseItem::CustomToolCallOutput { output, .. } => {
+            sanitize_undecryptable_function_output(output)
+        }
+        ResponseItem::Message { .. }
+        | ResponseItem::LocalShellCall { .. }
+        | ResponseItem::FunctionCall { .. }
+        | ResponseItem::ToolSearchCall { .. }
+        | ResponseItem::ToolSearchOutput { .. }
+        | ResponseItem::CustomToolCall { .. }
+        | ResponseItem::WebSearchCall { .. }
+        | ResponseItem::ImageGenerationCall { .. }
+        | ResponseItem::CompactionTrigger
+        | ResponseItem::Other => false,
+    }
+}
+
+fn sanitize_undecryptable_function_output(output: &mut FunctionCallOutputPayload) -> bool {
+    let Some(content_items) = output.content_items_mut() else {
+        return false;
+    };
+
+    let mut changed = false;
+    for item in content_items {
+        if matches!(item, FunctionCallOutputContentItem::EncryptedContent { .. }) {
+            *item = FunctionCallOutputContentItem::InputText {
+                text: ENCRYPTED_TOOL_OUTPUT_UNAVAILABLE.to_string(),
+            };
+            changed = true;
+        }
+    }
+    changed
+}
+
+fn should_keep_after_encrypted_content_sanitization(item: &ResponseItem) -> bool {
+    match item {
+        ResponseItem::Reasoning {
+            summary, content, ..
+        } => !summary.is_empty() || content.as_ref().is_some_and(|content| !content.is_empty()),
+        ResponseItem::Compaction { .. } => false,
+        ResponseItem::ContextCompaction {
+            encrypted_content: None,
+        } => false,
+        ResponseItem::Message { .. }
+        | ResponseItem::LocalShellCall { .. }
+        | ResponseItem::FunctionCall { .. }
+        | ResponseItem::ToolSearchCall { .. }
+        | ResponseItem::FunctionCallOutput { .. }
+        | ResponseItem::ToolSearchOutput { .. }
+        | ResponseItem::CustomToolCall { .. }
+        | ResponseItem::CustomToolCallOutput { .. }
+        | ResponseItem::WebSearchCall { .. }
+        | ResponseItem::ImageGenerationCall { .. }
+        | ResponseItem::CompactionTrigger
+        | ResponseItem::ContextCompaction { .. }
+        | ResponseItem::Other => true,
     }
 }
 

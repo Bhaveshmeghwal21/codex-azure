@@ -63,3 +63,12 @@ async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
         Some("plan contributed assistant text")
     );
 }
+
+#[test]
+fn invalid_encrypted_content_error_is_detected_from_provider_body() {
+    let err = CodexErr::InvalidRequest(
+        r#"{"error":{"message":"The encrypted content could not be verified.","type":"invalid_request_error","code":"invalid_encrypted_content"}}"#.to_string(),
+    );
+
+    assert!(is_invalid_encrypted_content_error(&err));
+}

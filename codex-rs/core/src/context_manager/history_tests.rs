@@ -1978,3 +1978,58 @@ fn text_only_items_unchanged() {
 
     assert_eq!(estimated, raw_len);
 }
+
+#[test]
+fn remove_undecryptable_encrypted_content_keeps_recoverable_history() {
+    let mut history = create_history_with_items(vec![
+        user_msg("before encrypted content"),
+        ResponseItem::Reasoning {
+            id: "rs_1".to_string(),
+            summary: vec![],
+            content: None,
+            encrypted_content: Some("stale-reasoning".to_string()),
+        },
+        ResponseItem::Compaction {
+            encrypted_content: "stale-compaction".to_string(),
+        },
+        ResponseItem::FunctionCall {
+            id: None,
+            name: "web.run".to_string(),
+            namespace: None,
+            arguments: "{}".to_string(),
+            call_id: "call_1".to_string(),
+        },
+        ResponseItem::FunctionCallOutput {
+            call_id: "call_1".to_string(),
+            output: FunctionCallOutputPayload::from_content_items(vec![
+                FunctionCallOutputContentItem::EncryptedContent {
+                    encrypted_content: "stale-tool-output".to_string(),
+                },
+            ]),
+        },
+    ]);
+
+    assert!(history.remove_undecryptable_encrypted_content());
+
+    assert_eq!(
+        history.raw_items(),
+        &[
+            user_msg("before encrypted content"),
+            ResponseItem::FunctionCall {
+                id: None,
+                name: "web.run".to_string(),
+                namespace: None,
+                arguments: "{}".to_string(),
+                call_id: "call_1".to_string(),
+            },
+            ResponseItem::FunctionCallOutput {
+                call_id: "call_1".to_string(),
+                output: FunctionCallOutputPayload::from_content_items(vec![
+                    FunctionCallOutputContentItem::InputText {
+                        text: "[encrypted tool output unavailable]".to_string(),
+                    },
+                ]),
+            },
+        ]
+    );
+}
