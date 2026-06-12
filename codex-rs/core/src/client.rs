@@ -75,6 +75,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::Verbosity as VerbosityConfig;
 use codex_protocol::models::FunctionCallOutputContentItem;
+use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
@@ -972,17 +973,28 @@ fn model_input_for_provider(
 fn azure_compatible_input_item(mut item: ResponseItem) -> Option<ResponseItem> {
     match &mut item {
         ResponseItem::Reasoning {
+            id,
             summary,
             content,
             encrypted_content,
-            ..
         } => {
             *encrypted_content = None;
+            // Never drop a reasoning item that has an id, even if summary/content
+            // are empty. Azure requires the reasoning item to be present whenever
+            // its paired message item appears in the input. Dropping an empty
+            // reasoning item causes the API to reject the next resume with:
+            //   "Item 'msg_...' was provided without its required 'reasoning' item"
+            // Instead, inject a minimal placeholder summary so the item is valid.
             if summary.is_empty() && content.as_ref().is_none_or(Vec::is_empty) {
-                None
-            } else {
-                Some(item)
+                if id.is_empty() {
+                    // No id either — safe to drop, nothing to pair against.
+                    return None;
+                }
+                summary.push(ReasoningItemReasoningSummary::SummaryText {
+                    text: String::new(),
+                });
             }
+            Some(item)
         }
         ResponseItem::Compaction { .. } | ResponseItem::ContextCompaction { .. } => None,
         ResponseItem::FunctionCallOutput { output, .. }
