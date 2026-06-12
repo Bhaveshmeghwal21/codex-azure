@@ -2577,11 +2577,6 @@ impl Session {
         state.replace_history(items, reference_context_item);
     }
 
-    pub(crate) async fn remove_undecryptable_encrypted_content_from_history(&self) -> bool {
-        let mut state = self.state.lock().await;
-        state.history.remove_undecryptable_encrypted_content()
-    }
-
     pub(crate) async fn replace_compacted_history(
         &self,
         items: Vec<ResponseItem>,

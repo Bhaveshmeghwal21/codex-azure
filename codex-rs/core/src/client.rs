@@ -74,6 +74,7 @@ use codex_protocol::SessionId;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::Verbosity as VerbosityConfig;
+use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
@@ -146,6 +147,8 @@ const X_CODEX_WS_STREAM_REQUEST_START_MS_CLIENT_METADATA_KEY: &str =
 const RESPONSES_WEBSOCKETS_V2_BETA_HEADER_VALUE: &str = "responses_websockets=2026-02-06";
 const RESPONSES_ENDPOINT: &str = "/responses";
 const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
+const AZURE_ENCRYPTED_TOOL_OUTPUT_UNAVAILABLE: &str =
+    "[encrypted tool output unavailable for Azure provider]";
 // `/responses/compact` is unary, so the timeout covers the full response rather than one idle
 // period between stream events.
 const COMPACT_REQUEST_TIMEOUT_IDLE_MULTIPLIER: u32 = 4;
@@ -495,6 +498,7 @@ impl ModelClient {
             service_tier,
             prompt_cache_key,
             text,
+            omit_null_encrypted_content,
             ..
         } = request;
         let payload = ApiCompactionInput {
@@ -507,6 +511,7 @@ impl ModelClient {
             service_tier: service_tier.as_deref(),
             prompt_cache_key: prompt_cache_key.as_deref(),
             text,
+            omit_null_encrypted_content,
         };
 
         let mut extra_headers = ApiHeaderMap::new();
@@ -744,7 +749,7 @@ impl ModelClient {
         service_tier: Option<String>,
     ) -> Result<ResponsesApiRequest> {
         let instructions = &prompt.base_instructions.text;
-        let input = prompt.get_formatted_input();
+        let input = model_input_for_provider(provider, prompt.get_formatted_input());
         let tools = create_tools_json_for_responses_api(&prompt.tools)?;
         let reasoning = Self::build_reasoning(model_info, effort, summary);
         let include = if reasoning.is_some() {
@@ -788,6 +793,7 @@ impl ModelClient {
                 X_CODEX_INSTALLATION_ID_HEADER.to_string(),
                 self.state.installation_id.clone(),
             )])),
+            omit_null_encrypted_content: provider.is_azure_responses_endpoint(),
         };
         Ok(request)
     }
@@ -946,6 +952,62 @@ impl ModelClient {
             );
         }
         headers
+    }
+}
+
+fn model_input_for_provider(
+    provider: &codex_api::Provider,
+    input: Vec<ResponseItem>,
+) -> Vec<ResponseItem> {
+    if provider.is_azure_responses_endpoint() {
+        input
+            .into_iter()
+            .filter_map(azure_compatible_input_item)
+            .collect()
+    } else {
+        input
+    }
+}
+
+fn azure_compatible_input_item(mut item: ResponseItem) -> Option<ResponseItem> {
+    match &mut item {
+        ResponseItem::Reasoning {
+            summary,
+            content,
+            encrypted_content,
+            ..
+        } => {
+            *encrypted_content = None;
+            if summary.is_empty() && content.as_ref().is_none_or(Vec::is_empty) {
+                None
+            } else {
+                Some(item)
+            }
+        }
+        ResponseItem::Compaction { .. } | ResponseItem::ContextCompaction { .. } => None,
+        ResponseItem::FunctionCallOutput { output, .. }
+        | ResponseItem::CustomToolCallOutput { output, .. } => {
+            if let Some(items) = output.content_items_mut() {
+                for item in items {
+                    if matches!(item, FunctionCallOutputContentItem::EncryptedContent { .. }) {
+                        *item = FunctionCallOutputContentItem::InputText {
+                            text: AZURE_ENCRYPTED_TOOL_OUTPUT_UNAVAILABLE.to_string(),
+                        };
+                    }
+                }
+            }
+            Some(item)
+        }
+        ResponseItem::Message { .. }
+        | ResponseItem::LocalShellCall { .. }
+        | ResponseItem::FunctionCall { .. }
+        | ResponseItem::ToolSearchCall { .. }
+        | ResponseItem::ToolSearchOutput { .. }
+        | ResponseItem::CustomToolCall { .. }
+        | ResponseItem::WebSearchCall { .. }
+        | ResponseItem::ImageGenerationCall { .. }
+        | ResponseItem::CompactionTrigger
+        | ResponseItem::Other => Some(item),
     }
 }
 

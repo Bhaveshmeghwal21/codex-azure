@@ -10,6 +10,8 @@ use codex_protocol::protocol::W3cTraceContext;
 use futures::Stream;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::Serializer;
+use serde::ser::SerializeStruct;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -21,22 +23,68 @@ pub const WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY: &str = "ws_request_
 pub const WS_REQUEST_HEADER_TRACESTATE_CLIENT_METADATA_KEY: &str = "ws_request_header_tracestate";
 
 /// Canonical input payload for the compaction endpoint.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct CompactionInput<'a> {
     pub model: &'a str,
     pub input: &'a [ResponseItem],
-    #[serde(skip_serializing_if = "str::is_empty")]
     pub instructions: &'a str,
     pub tools: Vec<Value>,
     pub parallel_tool_calls: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<Reasoning>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_key: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<TextControls>,
+    pub omit_null_encrypted_content: bool,
+}
+
+impl Serialize for CompactionInput<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut fields = 4;
+        if !self.instructions.is_empty() {
+            fields += 1;
+        }
+        if self.reasoning.is_some() {
+            fields += 1;
+        }
+        if self.service_tier.is_some() {
+            fields += 1;
+        }
+        if self.prompt_cache_key.is_some() {
+            fields += 1;
+        }
+        if self.text.is_some() {
+            fields += 1;
+        }
+
+        let mut state = serializer.serialize_struct("CompactionInput", fields)?;
+        state.serialize_field("model", &self.model)?;
+        state.serialize_field(
+            "input",
+            &serialize_input_items(self.input, self.omit_null_encrypted_content)
+                .map_err(serde::ser::Error::custom)?,
+        )?;
+        if !self.instructions.is_empty() {
+            state.serialize_field("instructions", &self.instructions)?;
+        }
+        state.serialize_field("tools", &self.tools)?;
+        state.serialize_field("parallel_tool_calls", &self.parallel_tool_calls)?;
+        if let Some(reasoning) = &self.reasoning {
+            state.serialize_field("reasoning", reasoning)?;
+        }
+        if let Some(service_tier) = &self.service_tier {
+            state.serialize_field("service_tier", service_tier)?;
+        }
+        if let Some(prompt_cache_key) = &self.prompt_cache_key {
+            state.serialize_field("prompt_cache_key", prompt_cache_key)?;
+        }
+        if let Some(text) = &self.text {
+            state.serialize_field("text", text)?;
+        }
+        state.end()
+    }
 }
 
 /// Canonical input payload for the memory summarize endpoint.
@@ -166,10 +214,9 @@ impl From<VerbosityConfig> for OpenAiVerbosity {
     }
 }
 
-#[derive(Debug, Serialize, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResponsesApiRequest {
     pub model: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
     pub instructions: String,
     pub input: Vec<ResponseItem>,
     pub tools: Vec<serde_json::Value>,
@@ -179,14 +226,66 @@ pub struct ResponsesApiRequest {
     pub store: bool,
     pub stream: bool,
     pub include: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<TextControls>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_metadata: Option<HashMap<String, String>>,
+    pub omit_null_encrypted_content: bool,
+}
+
+impl Serialize for ResponsesApiRequest {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut fields = 9;
+        if !self.instructions.is_empty() {
+            fields += 1;
+        }
+        if self.service_tier.is_some() {
+            fields += 1;
+        }
+        if self.prompt_cache_key.is_some() {
+            fields += 1;
+        }
+        if self.text.is_some() {
+            fields += 1;
+        }
+        if self.client_metadata.is_some() {
+            fields += 1;
+        }
+
+        let mut state = serializer.serialize_struct("ResponsesApiRequest", fields)?;
+        state.serialize_field("model", &self.model)?;
+        if !self.instructions.is_empty() {
+            state.serialize_field("instructions", &self.instructions)?;
+        }
+        state.serialize_field(
+            "input",
+            &serialize_input_items(&self.input, self.omit_null_encrypted_content)
+                .map_err(serde::ser::Error::custom)?,
+        )?;
+        state.serialize_field("tools", &self.tools)?;
+        state.serialize_field("tool_choice", &self.tool_choice)?;
+        state.serialize_field("parallel_tool_calls", &self.parallel_tool_calls)?;
+        state.serialize_field("reasoning", &self.reasoning)?;
+        state.serialize_field("store", &self.store)?;
+        state.serialize_field("stream", &self.stream)?;
+        state.serialize_field("include", &self.include)?;
+        if let Some(service_tier) = &self.service_tier {
+            state.serialize_field("service_tier", service_tier)?;
+        }
+        if let Some(prompt_cache_key) = &self.prompt_cache_key {
+            state.serialize_field("prompt_cache_key", prompt_cache_key)?;
+        }
+        if let Some(text) = &self.text {
+            state.serialize_field("text", text)?;
+        }
+        if let Some(client_metadata) = &self.client_metadata {
+            state.serialize_field("client_metadata", client_metadata)?;
+        }
+        state.end()
+    }
 }
 
 impl From<&ResponsesApiRequest> for ResponseCreateWsRequest {
@@ -208,16 +307,15 @@ impl From<&ResponsesApiRequest> for ResponseCreateWsRequest {
             text: request.text.clone(),
             generate: None,
             client_metadata: request.client_metadata.clone(),
+            omit_null_encrypted_content: request.omit_null_encrypted_content,
         }
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct ResponseCreateWsRequest {
     pub model: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
     pub instructions: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_response_id: Option<String>,
     pub input: Vec<ResponseItem>,
     pub tools: Vec<Value>,
@@ -227,16 +325,103 @@ pub struct ResponseCreateWsRequest {
     pub store: bool,
     pub stream: bool,
     pub include: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<TextControls>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub generate: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub client_metadata: Option<HashMap<String, String>>,
+    pub omit_null_encrypted_content: bool,
+}
+
+impl Serialize for ResponseCreateWsRequest {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut fields = 9;
+        if !self.instructions.is_empty() {
+            fields += 1;
+        }
+        if self.previous_response_id.is_some() {
+            fields += 1;
+        }
+        if self.service_tier.is_some() {
+            fields += 1;
+        }
+        if self.prompt_cache_key.is_some() {
+            fields += 1;
+        }
+        if self.text.is_some() {
+            fields += 1;
+        }
+        if self.generate.is_some() {
+            fields += 1;
+        }
+        if self.client_metadata.is_some() {
+            fields += 1;
+        }
+
+        let mut state = serializer.serialize_struct("ResponseCreateWsRequest", fields)?;
+        state.serialize_field("model", &self.model)?;
+        if !self.instructions.is_empty() {
+            state.serialize_field("instructions", &self.instructions)?;
+        }
+        if let Some(previous_response_id) = &self.previous_response_id {
+            state.serialize_field("previous_response_id", previous_response_id)?;
+        }
+        state.serialize_field(
+            "input",
+            &serialize_input_items(&self.input, self.omit_null_encrypted_content)
+                .map_err(serde::ser::Error::custom)?,
+        )?;
+        state.serialize_field("tools", &self.tools)?;
+        state.serialize_field("tool_choice", &self.tool_choice)?;
+        state.serialize_field("parallel_tool_calls", &self.parallel_tool_calls)?;
+        state.serialize_field("reasoning", &self.reasoning)?;
+        state.serialize_field("store", &self.store)?;
+        state.serialize_field("stream", &self.stream)?;
+        state.serialize_field("include", &self.include)?;
+        if let Some(service_tier) = &self.service_tier {
+            state.serialize_field("service_tier", service_tier)?;
+        }
+        if let Some(prompt_cache_key) = &self.prompt_cache_key {
+            state.serialize_field("prompt_cache_key", prompt_cache_key)?;
+        }
+        if let Some(text) = &self.text {
+            state.serialize_field("text", text)?;
+        }
+        if let Some(generate) = &self.generate {
+            state.serialize_field("generate", generate)?;
+        }
+        if let Some(client_metadata) = &self.client_metadata {
+            state.serialize_field("client_metadata", client_metadata)?;
+        }
+        state.end()
+    }
+}
+
+fn serialize_input_items(
+    input: &[ResponseItem],
+    omit_null_encrypted_content: bool,
+) -> serde_json::Result<Vec<Value>> {
+    input
+        .iter()
+        .map(|item| {
+            let mut value = serde_json::to_value(item)?;
+            if omit_null_encrypted_content
+                && let Some(object) = value.as_object_mut()
+                && object.get("type").and_then(Value::as_str) == Some("reasoning")
+            {
+                if object.get("encrypted_content").is_some_and(Value::is_null) {
+                    object.remove("encrypted_content");
+                }
+                if object.get("content").is_some_and(Value::is_null) {
+                    object.remove("content");
+                }
+            }
+            Ok(value)
+        })
+        .collect()
 }
 
 #[derive(Debug, Serialize)]

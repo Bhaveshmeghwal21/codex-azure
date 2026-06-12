@@ -952,7 +952,6 @@ async fn run_sampling_request(
     let max_retries = turn_context.provider.info().stream_max_retries();
     let mut retries = 0;
     let mut initial_input = Some(input);
-    let mut retried_after_invalid_encrypted_content = false;
     loop {
         let prompt_input = if let Some(input) = initial_input.take() {
             input
@@ -997,25 +996,6 @@ async fn run_sampling_request(
             Err(err) => err,
         };
 
-        if is_invalid_encrypted_content_error(&err) && !retried_after_invalid_encrypted_content {
-            retried_after_invalid_encrypted_content = true;
-            if sess
-                .remove_undecryptable_encrypted_content_from_history()
-                .await
-            {
-                sess.recompute_token_usage(&turn_context).await;
-                sess.send_event(
-                    &turn_context,
-                    EventMsg::Warning(WarningEvent {
-                        message: "Removed encrypted conversation history that the model provider could no longer verify, then retried the request.".to_string(),
-                    }),
-                )
-                .await;
-                retries = 0;
-                continue;
-            }
-        }
-
         if !err.is_retryable() {
             return Err(err);
         }
@@ -1031,16 +1011,6 @@ async fn run_sampling_request(
         )
         .await?;
     }
-}
-
-fn is_invalid_encrypted_content_error(err: &CodexErr) -> bool {
-    let CodexErr::InvalidRequest(message) = err else {
-        return false;
-    };
-
-    message.contains("\"code\":\"invalid_encrypted_content\"")
-        || message.contains("\"code\": \"invalid_encrypted_content\"")
-        || message.contains("invalid_encrypted_content")
 }
 
 #[expect(
