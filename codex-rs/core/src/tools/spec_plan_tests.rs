@@ -498,6 +498,34 @@ async fn host_context_gates_goal_and_agent_job_tools() {
 }
 
 #[tokio::test]
+async fn research_record_tool_is_visible_only_for_researcher_agents() {
+    let normal = probe(|_| {}).await;
+    normal.assert_visible_lacks(&["research"]);
+    normal.assert_registered_lacks(&["researchrecord"]);
+
+    let researcher = probe(|turn| {
+        turn.session_source = SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+            parent_thread_id: codex_protocol::ThreadId::from_string(
+                "00000000-0000-0000-0000-000000000001",
+            )
+            .expect("valid thread id"),
+            depth: 1,
+            agent_path: None,
+            agent_nickname: None,
+            agent_role: Some("researcher".to_string()),
+        });
+    })
+    .await;
+
+    researcher.assert_visible_contains(&["research"]);
+    assert_eq!(
+        researcher.namespace_function_names("research"),
+        &["record".to_string()]
+    );
+    researcher.assert_registered_contains(&["researchrecord"]);
+}
+
+#[tokio::test]
 async fn mcp_and_tool_search_follow_direct_and_deferred_tool_exposure() {
     let direct_mcp = probe_with(
         |_| {},

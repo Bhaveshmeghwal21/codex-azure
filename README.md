@@ -59,11 +59,22 @@ From this checkout:
 
 ```shell
 cd codex-rs
-cargo build -p codex-cli
-cargo run --bin codex
+cargo build --release -p codex-tui
 ```
 
-After making Rust changes, run the repo helpers from the repository root. The root `justfile` defaults to the `codex-rs` workspace:
+On Windows, copy the result to your PATH:
+
+```powershell
+Copy-Item ".\target\release\codex-tui.exe" "C:\Users\<YOU>\codex.exe" -Force
+```
+
+For low-RAM machines use the lighter profile:
+
+```shell
+cargo build --profile release-light -p codex-tui
+```
+
+After making Rust changes, run the repo helpers from the repository root:
 
 ```shell
 just fmt
@@ -96,15 +107,22 @@ You can also use Codex with an API key, but this requires [additional setup](htt
 
 Run `codex`, select **Provide your own Azure OpenAI details**, and enter:
 
-- Deployment endpoint, for example `https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT`
-- Azure OpenAI API key
-- API version, if your deployment requires one
+| Field | Example |
+|---|---|
+| **Endpoint** | `https://YOUR-RESOURCE.openai.azure.com/openai` |
+| **API Key** | your Azure API key |
+| **API Version** | `2025-04-01-preview` |
 
-This writes the active `azure` model provider to `config.toml` so subsequent requests use the Azure endpoint directly.
+> **Endpoint format:** include `/openai` at the end — do **not** include `/responses` or a deployment path. Codex appends `/responses` automatically.
+
+This writes an `azure` model provider to `~/.codex/config.toml`. After setup, manage multiple Azure deployments at any time using the `/azure` slash command inside Codex — no rebuild required.
+
+See **[Azure OpenAI Integration guide](./docs/azure-openai.md)** for full details including the `/azure` command reference, config file format, reasoning settings, session resume, troubleshooting, and CI build instructions.
 
 ## Docs
 
 - [**Codex Documentation**](https://developers.openai.com/codex)
+- [**Azure OpenAI Integration**](./docs/azure-openai.md)
 - [**Contributing**](./docs/contributing.md)
 - [**Installing & building**](./docs/install.md)
 - [**Open source fund**](./docs/open-source-fund.md)

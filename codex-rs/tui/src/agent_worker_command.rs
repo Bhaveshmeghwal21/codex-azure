@@ -15,6 +15,7 @@ pub(crate) enum AgentWorkerCommand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AgentWorkerKind {
     General,
+    Research,
     Explore,
     Review,
     Test,
@@ -22,8 +23,7 @@ pub(crate) enum AgentWorkerKind {
     Auto,
 }
 
-pub(crate) const AGENT_USAGE: &str =
-    "Usage: /agent [list|spawn|explore|review|test|implement|auto] <task>";
+pub(crate) const AGENT_USAGE: &str = "Usage: /agent [list|spawn|explore|review|test|implement|auto] <task> (research: /agent spawn researcher <topic>)";
 
 pub(crate) fn parse_agent_worker_command(input: &str) -> Result<AgentWorkerCommand, &'static str> {
     let trimmed = input.trim();
@@ -41,7 +41,20 @@ pub(crate) fn parse_agent_worker_command(input: &str) -> Result<AgentWorkerComma
     }
 
     let kind = match verb.to_ascii_lowercase().as_str() {
-        "spawn" => AgentWorkerKind::General,
+        "spawn" => {
+            if task.eq_ignore_ascii_case("researcher") {
+                return Err(AGENT_USAGE);
+            }
+            let (maybe_role, maybe_task) = split_once_whitespace(task).unwrap_or(("", ""));
+            if maybe_role.eq_ignore_ascii_case("researcher") {
+                if maybe_task.trim().is_empty() {
+                    return Err(AGENT_USAGE);
+                }
+                AgentWorkerKind::Research
+            } else {
+                AgentWorkerKind::General
+            }
+        }
         "explore" => AgentWorkerKind::Explore,
         "review" => AgentWorkerKind::Review,
         "test" => AgentWorkerKind::Test,
@@ -53,9 +66,10 @@ pub(crate) fn parse_agent_worker_command(input: &str) -> Result<AgentWorkerComma
 }
 
 pub(crate) fn build_agent_worker_prompt(kind: AgentWorkerKind, task: &str) -> String {
-    let task = task.trim();
+    let task = kind.normalize_task(task);
     let role = kind.role_name();
     let autonomy = kind.autonomy_policy();
+    let spawn_contract = kind.spawn_contract(task);
 
     format!(
         "Start a bounded autonomous subagent worker for this task.\n\
@@ -63,6 +77,7 @@ pub(crate) fn build_agent_worker_prompt(kind: AgentWorkerKind, task: &str) -> St
 Worker role: {role}\n\
 Task: {task}\n\
 \n\
+{spawn_contract}\
 Use the existing subagent tools to spawn exactly one worker unless the task clearly requires \
 multiple independent workers. Give the worker the role-specific instructions below. Keep the \
 main thread focused on coordination and final review.\n\
@@ -84,6 +99,7 @@ impl AgentWorkerKind {
     fn role_name(self) -> &'static str {
         match self {
             Self::General => "general worker",
+            Self::Research => "researcher",
             Self::Explore => "read-only explorer",
             Self::Review => "read-only reviewer",
             Self::Test => "test diagnosis worker",
@@ -98,6 +114,13 @@ impl AgentWorkerKind {
                 "- Work autonomously on the delegated task.\n\
 - Prefer reading, searching, and focused verification before proposing edits.\n\
 - Ask the main thread for direction if the task scope is ambiguous or risky."
+            }
+            Self::Research => {
+                "- Spawn the worker with agent_type: researcher.\n\
+- Do a year-bucketed literature review: current year first, previous year second, older foundational work last.\n\
+- Use `research.record` after every search or paper-inspection step.\n\
+- Stop a bucket only after saturation by repeated low-novelty findings, not after a fixed quota.\n\
+- Final output must include coverage, key papers, limitations, and stop reasons."
             }
             Self::Explore => {
                 "- Read and search only; do not edit files.\n\
@@ -125,6 +148,45 @@ impl AgentWorkerKind {
 - Keep edits limited to the requested task and existing codebase patterns.\n\
 - Stop after one coherent implementation pass; do not keep retrying indefinitely."
             }
+        }
+    }
+
+    fn spawn_contract(self, task: &str) -> String {
+        if !matches!(self, Self::Research) {
+            return String::new();
+        }
+        let payload = serde_json::json!({
+            "agent_type": "researcher",
+            "message": task,
+            "task_name": "researcher",
+            "fork_turns": "none",
+        });
+        let payload =
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string());
+        format!(
+            "Required spawn_agent arguments:\n\
+```json\n\
+{payload}\n\
+```\n\
+If the available spawn_agent schema does not accept task_name or fork_turns, omit only those \
+fields. Keep agent_type exactly `researcher`. Do not do the research in this parent turn; if \
+spawn_agent is unavailable, report that blocker.\n\
+\n"
+        )
+    }
+
+    fn normalize_task(self, task: &str) -> &str {
+        let task = task.trim();
+        if !matches!(self, Self::Research) {
+            return task;
+        }
+        let Some((role, rest)) = split_once_whitespace(task) else {
+            return task;
+        };
+        if role.eq_ignore_ascii_case("researcher") {
+            rest.trim()
+        } else {
+            task
         }
     }
 }
@@ -158,6 +220,14 @@ mod tests {
             Ok(AgentWorkerCommand::Spawn(AgentWorkerKind::Explore))
         );
         assert_eq!(
+            parse_agent_worker_command("spawn researcher current RAG papers"),
+            Ok(AgentWorkerCommand::Spawn(AgentWorkerKind::Research))
+        );
+        assert_eq!(
+            parse_agent_worker_command("spawn researcher"),
+            Err(AGENT_USAGE)
+        );
+        assert_eq!(
             parse_agent_worker_command("review current diff"),
             Ok(AgentWorkerCommand::Spawn(AgentWorkerKind::Review))
         );
@@ -186,5 +256,19 @@ mod tests {
         assert!(prompt.contains("Use the existing subagent tools"));
         assert!(prompt.contains("Review only; do not edit files."));
         assert!(prompt.contains("Do not bypass approval prompts or sandbox restrictions."));
+    }
+
+    #[test]
+    fn build_research_prompt_requests_researcher_agent_type() {
+        let prompt = build_agent_worker_prompt(
+            AgentWorkerKind::Research,
+            "researcher current multimodal agent papers",
+        );
+
+        assert!(prompt.contains("Worker role: researcher"));
+        assert!(prompt.contains("\"agent_type\": \"researcher\""));
+        assert!(prompt.contains("\"message\": \"current multimodal agent papers\""));
+        assert!(prompt.contains("research.record"));
+        assert!(prompt.contains("year-bucketed literature review"));
     }
 }

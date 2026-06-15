@@ -25,12 +25,14 @@ pub enum SlashCommand {
     #[strum(to_string = "approve")]
     AutoReview,
     Memories,
+    Azure,
     Skills,
     Hooks,
     Review,
     Rename,
     New,
     Archive,
+    Delete,
     Resume,
     Fork,
     Init,
@@ -90,6 +92,7 @@ impl SlashCommand {
             SlashCommand::Rename => "rename the current thread",
             SlashCommand::Resume => "resume a saved chat",
             SlashCommand::Archive => "archive this session and exit",
+            SlashCommand::Delete => "permanently delete this session and exit",
             SlashCommand::Clear => "clear the terminal and start a new chat",
             SlashCommand::Fork => "fork the current chat",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
@@ -133,6 +136,7 @@ impl SlashCommand {
             SlashCommand::Experimental => "toggle experimental features",
             SlashCommand::AutoReview => "approve one retry of a recent auto-review denial",
             SlashCommand::Memories => "configure memory use and generation",
+            SlashCommand::Azure => "manage Azure OpenAI providers",
             SlashCommand::Mcp => "list configured MCP tools; use /mcp verbose for details",
             SlashCommand::Apps => "manage apps",
             SlashCommand::Plugins => "browse plugins",
@@ -161,6 +165,7 @@ impl SlashCommand {
                 | SlashCommand::Agent
                 | SlashCommand::MultiAgents
                 | SlashCommand::Mcp
+                | SlashCommand::Azure
                 | SlashCommand::Raw
                 | SlashCommand::Pets
                 | SlashCommand::Side
@@ -189,6 +194,7 @@ impl SlashCommand {
         match self {
             SlashCommand::New
             | SlashCommand::Archive
+            | SlashCommand::Delete
             | SlashCommand::Resume
             | SlashCommand::Fork
             | SlashCommand::Init
@@ -202,6 +208,7 @@ impl SlashCommand {
             | SlashCommand::SandboxReadRoot
             | SlashCommand::Experimental
             | SlashCommand::Memories
+            | SlashCommand::Azure
             | SlashCommand::Review
             | SlashCommand::Plan
             | SlashCommand::Clear

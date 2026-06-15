@@ -126,6 +126,9 @@ impl App {
             AppEvent::ArchiveCurrentThread => {
                 return Ok(self.archive_current_thread(app_server).await);
             }
+            AppEvent::DeleteCurrentThread => {
+                return Ok(self.delete_current_thread(app_server).await);
+            }
             AppEvent::ForkCurrentSession => {
                 self.session_telemetry.counter(
                     "codex.thread.fork",
@@ -1406,6 +1409,41 @@ impl App {
                     }
                 }
             }
+            AppEvent::PersistAzureProvider {
+                edits,
+                success_message,
+            } => {
+                match crate::config_update::write_config_batch(app_server.request_handle(), edits)
+                    .await
+                {
+                    Ok(_) => {
+                        if let Err(err) = self.refresh_in_memory_config_from_disk().await {
+                            tracing::warn!(
+                                error = %err,
+                                "failed to refresh TUI config after Azure provider write"
+                            );
+                            self.chat_widget.add_info_message(
+                                success_message,
+                                Some(format!(
+                                    "Saved, but TUI refresh failed: {err}. Restart Codex if the provider list looks stale."
+                                )),
+                            );
+                        } else {
+                            self.chat_widget
+                                .add_info_message(success_message, /*hint*/ None);
+                        }
+                    }
+                    Err(err) => {
+                        tracing::error!(
+                            error = %err,
+                            "failed to persist Azure provider config"
+                        );
+                        self.chat_widget.add_error_message(format!(
+                            "Failed to save Azure provider config: {err}"
+                        ));
+                    }
+                }
+            }
             AppEvent::PersistRealtimeAudioDeviceSelection { kind, name } => {
                 let builder = match kind {
                     RealtimeAudioDeviceKind::Microphone => {
@@ -2223,6 +2261,33 @@ impl App {
             Err(err) => {
                 self.chat_widget
                     .add_error_message(format!("Failed to archive current thread: {err}"));
+                AppRunControl::Continue
+            }
+        }
+    }
+
+    pub(super) async fn delete_current_thread(
+        &mut self,
+        app_server: &mut AppServerSession,
+    ) -> AppRunControl {
+        let Some(thread_id) = self.active_thread_id.or(self.chat_widget.thread_id()) else {
+            self.chat_widget
+                .add_error_message("A thread must start before it can be deleted.".to_string());
+            return AppRunControl::Continue;
+        };
+        if self.side_threads.contains_key(&thread_id) {
+            self.chat_widget.add_error_message(
+                "'/delete' is unavailable in side conversations. Press Ctrl+C to return to the main thread first."
+                    .to_string(),
+            );
+            return AppRunControl::Continue;
+        }
+
+        match app_server.thread_delete(thread_id).await {
+            Ok(()) => AppRunControl::Exit(ExitReason::UserRequested),
+            Err(err) => {
+                self.chat_widget
+                    .add_error_message(format!("Failed to delete current thread: {err}"));
                 AppRunControl::Continue
             }
         }

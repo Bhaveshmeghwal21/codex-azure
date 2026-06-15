@@ -82,6 +82,8 @@ mod tests {
     use codex_client::Response;
     use codex_client::StreamResponse;
     use codex_client::TransportError;
+    use codex_protocol::models::ReasoningItemReasoningSummary;
+    use serde_json::json;
 
     #[derive(Clone, Default)]
     struct DummyTransport;
@@ -100,5 +102,47 @@ mod tests {
     #[test]
     fn path_is_responses_compact() {
         assert_eq!(CompactClient::<DummyTransport>::path(), "responses/compact");
+    }
+
+    #[test]
+    fn compaction_input_can_omit_null_encrypted_content() {
+        let input = vec![ResponseItem::Reasoning {
+            id: "rs_1".to_string(),
+            summary: vec![ReasoningItemReasoningSummary::SummaryText {
+                text: "readable summary".to_string(),
+            }],
+            content: None,
+            encrypted_content: None,
+        }];
+        let payload = CompactionInput {
+            model: "gpt-test",
+            input: &input,
+            instructions: "",
+            tools: Vec::new(),
+            parallel_tool_calls: false,
+            reasoning: None,
+            service_tier: None,
+            prompt_cache_key: None,
+            text: None,
+            omit_null_encrypted_content: true,
+        };
+
+        let body = serde_json::to_value(payload).expect("compaction input should serialize");
+
+        assert_eq!(
+            body,
+            json!({
+                "model": "gpt-test",
+                "input": [{
+                    "type": "reasoning",
+                    "summary": [{
+                        "type": "summary_text",
+                        "text": "readable summary"
+                    }]
+                }],
+                "tools": [],
+                "parallel_tool_calls": false
+            })
+        );
     }
 }

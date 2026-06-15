@@ -103,6 +103,24 @@ async fn apply_empty_explorer_role_preserves_current_model_and_reasoning_effort(
 }
 
 #[tokio::test]
+async fn apply_researcher_role_preserves_current_model() {
+    let (_home, mut config) = test_config_with_cli_overrides(Vec::new()).await;
+    config.model = Some("runtime-model".to_string());
+
+    apply_role_to_config(&mut config, Some("researcher"))
+        .await
+        .expect("researcher role should apply");
+
+    assert_eq!(config.model.as_deref(), Some("runtime-model"));
+    assert!(
+        config
+            .developer_instructions
+            .as_deref()
+            .is_some_and(|instructions| instructions.contains("research.record"))
+    );
+}
+
+#[tokio::test]
 async fn apply_role_returns_unavailable_for_missing_user_role_file() {
     let (_home, mut config) = test_config_with_cli_overrides(Vec::new()).await;
     config.agent_roles.insert(
@@ -480,6 +498,15 @@ fn spawn_tool_spec_lists_user_defined_roles_before_built_ins() {
 }
 
 #[test]
+fn spawn_tool_spec_lists_built_in_researcher_role() {
+    let spec = spawn_tool_spec::build(&BTreeMap::new());
+
+    assert!(spec.contains("researcher: {"));
+    assert!(spec.contains("year-bucketed literature research"));
+    assert!(spec.contains("research.record"));
+}
+
+#[test]
 fn spawn_tool_spec_marks_role_locked_model_and_reasoning_effort() {
     let tempdir = TempDir::new().expect("create temp dir");
     let role_path = tempdir.path().join("researcher.toml");
@@ -559,5 +586,10 @@ fn built_in_config_file_contents_resolves_explorer_only() {
     assert_eq!(
         built_in::config_file_contents(Path::new("missing.toml")),
         None
+    );
+    assert!(
+        built_in::config_file_contents(Path::new("researcher.toml"))
+            .expect("researcher role should have built-in config")
+            .contains("research.record")
     );
 }

@@ -69,12 +69,14 @@ async fn apply_role_to_config_inner(
     {
         return Ok(());
     }
+    let preserve_current_model = role_layer_toml.get("model").is_none();
     let preserve_current_provider = role_layer_toml.get("model_provider").is_none();
     let preserve_current_service_tier = role_layer_toml.get("service_tier").is_none();
 
     *config = reload::build_next_config(
         config,
         role_layer_toml,
+        preserve_current_model,
         preserve_current_provider,
         preserve_current_service_tier,
     )
@@ -132,6 +134,7 @@ mod reload {
     pub(super) async fn build_next_config(
         config: &Config,
         role_layer_toml: TomlValue,
+        preserve_current_model: bool,
         preserve_current_provider: bool,
         preserve_current_service_tier: bool,
     ) -> anyhow::Result<Config> {
@@ -143,6 +146,7 @@ mod reload {
             merged_config,
             reload_overrides(
                 config,
+                preserve_current_model,
                 preserve_current_provider,
                 preserve_current_service_tier,
             ),
@@ -200,11 +204,15 @@ mod reload {
 
     fn reload_overrides(
         config: &Config,
+        preserve_current_model: bool,
         preserve_current_provider: bool,
         preserve_current_service_tier: bool,
     ) -> ConfigOverrides {
         ConfigOverrides {
             cwd: Some(config.cwd.to_path_buf()),
+            model: preserve_current_model
+                .then(|| config.model.clone())
+                .flatten(),
             model_provider: preserve_current_provider.then(|| config.model_provider_id.clone()),
             service_tier: preserve_current_service_tier.then(|| config.service_tier.clone()),
             codex_linux_sandbox_exe: config.codex_linux_sandbox_exe.clone(),
@@ -332,6 +340,20 @@ Rules:
                     }
                 ),
                 (
+                    "researcher".to_string(),
+                    AgentRoleConfig {
+                        description: Some(r#"Use `researcher` for year-bucketed literature research.
+The researcher must search current-year papers first, previous-year papers next, and older foundational work last.
+It must call `research.record` after each search or paper-inspection step, deduplicate papers by DOI, arXiv ID, or normalized title, and stop only when a bucket reaches saturation by repeated low-novelty findings."#.to_string()),
+                        config_file: Some("researcher.toml".to_string().parse().unwrap_or_default()),
+                        nickname_candidates: Some(vec![
+                            "Curie".to_string(),
+                            "Turing".to_string(),
+                            "Noether".to_string(),
+                        ]),
+                    }
+                ),
+                (
                     "worker".to_string(),
                     AgentRoleConfig {
                         description: Some(r#"Use for execution and production work.
@@ -372,9 +394,11 @@ Rules:
     /// Resolves a built-in role `config_file` path to embedded content.
     pub(super) fn config_file_contents(path: &Path) -> Option<&'static str> {
         const EXPLORER: &str = include_str!("builtins/explorer.toml");
+        const RESEARCHER: &str = include_str!("builtins/researcher.toml");
         const AWAITER: &str = include_str!("builtins/awaiter.toml");
         match path.to_str()? {
             "explorer.toml" => Some(EXPLORER),
+            "researcher.toml" => Some(RESEARCHER),
             "awaiter.toml" => Some(AWAITER),
             _ => None,
         }

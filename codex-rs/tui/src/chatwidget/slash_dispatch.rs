@@ -10,6 +10,8 @@ use super::*;
 use crate::agent_worker_command;
 use crate::agent_worker_command::AgentWorkerCommand;
 use crate::app_event::ThreadGoalSetMode;
+use crate::azure_command;
+use crate::azure_command::AzureCommand;
 use crate::bottom_pane::prompt_args::parse_slash_name;
 use crate::bottom_pane::slash_commands::BuiltinCommandFlags;
 use crate::bottom_pane::slash_commands::ServiceTierCommand;
@@ -195,6 +197,34 @@ impl ChatWidget {
                 });
                 self.request_redraw();
             }
+            SlashCommand::Delete => {
+                self.bottom_pane.show_selection_view(SelectionViewParams {
+                    title: Some("Delete this session?".to_string()),
+                    subtitle: Some(
+                        "Cannot be undone. Subagent threads will also be deleted.".to_string(),
+                    ),
+                    footer_hint: Some(standard_popup_hint_line()),
+                    items: vec![
+                        SelectionItem {
+                            name: "No, keep this session".to_string(),
+                            description: Some("Return to the current session".to_string()),
+                            dismiss_on_select: true,
+                            ..Default::default()
+                        },
+                        SelectionItem {
+                            name: "Yes, delete and exit".to_string(),
+                            description: Some("Permanently delete this session now".to_string()),
+                            actions: vec![Box::new(|tx| {
+                                tx.send(AppEvent::DeleteCurrentThread);
+                            })],
+                            dismiss_on_select: true,
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                });
+                self.request_redraw();
+            }
             SlashCommand::Clear => {
                 self.app_event_tx.send(AppEvent::ClearUi);
             }
@@ -352,6 +382,9 @@ impl ChatWidget {
             }
             SlashCommand::Memories => {
                 self.open_memories_popup();
+            }
+            SlashCommand::Azure => {
+                self.add_info_message(azure_command::AZURE_USAGE.to_string(), /*hint*/ None);
             }
             SlashCommand::Quit | SlashCommand::Exit => {
                 self.request_quit_without_confirmation();
@@ -804,6 +837,9 @@ impl ChatWidget {
             SlashCommand::Agent | SlashCommand::MultiAgents => {
                 self.dispatch_agent_command_args(trimmed);
             }
+            SlashCommand::Azure => {
+                self.dispatch_azure_command_args(trimmed);
+            }
             SlashCommand::Review if !trimmed.is_empty() => {
                 self.submit_op(AppCommand::review(ReviewTarget::Custom {
                     instructions: args,
@@ -855,6 +891,24 @@ impl ChatWidget {
                 );
             }
             Err(usage) => self.add_error_message(usage.to_string()),
+        }
+    }
+
+    fn dispatch_azure_command_args(&mut self, trimmed: &str) {
+        match azure_command::parse_azure_command(trimmed) {
+            Ok(AzureCommand::List) => {
+                self.add_info_message(azure_command::list_providers(&self.config), None);
+            }
+            Ok(command) => match azure_command::build_write_request(command, &self.config) {
+                Ok(request) => {
+                    self.app_event_tx.send(AppEvent::PersistAzureProvider {
+                        edits: request.edits,
+                        success_message: request.success_message,
+                    });
+                }
+                Err(err) => self.add_error_message(err),
+            },
+            Err(err) => self.add_error_message(err),
         }
     }
 
@@ -1011,6 +1065,7 @@ impl ChatWidget {
             SlashCommand::Feedback
             | SlashCommand::New
             | SlashCommand::Archive
+            | SlashCommand::Delete
             | SlashCommand::Clear
             | SlashCommand::Resume
             | SlashCommand::Fork
@@ -1034,6 +1089,7 @@ impl ChatWidget {
             | SlashCommand::Experimental
             | SlashCommand::AutoReview
             | SlashCommand::Memories
+            | SlashCommand::Azure
             | SlashCommand::Quit
             | SlashCommand::Exit
             | SlashCommand::Logout
