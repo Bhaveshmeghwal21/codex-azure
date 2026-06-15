@@ -213,6 +213,9 @@ pub(crate) enum AppEvent {
     /// Archive the current active main thread and exit after it succeeds.
     ArchiveCurrentThread,
 
+    /// Permanently delete the current active main thread and exit after it succeeds.
+    DeleteCurrentThread,
+
     /// Fork the current session into a new thread.
     ForkCurrentSession,
 
