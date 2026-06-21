@@ -221,7 +221,7 @@ async fn apply_metadata_update(
                     patch.source.clone().unwrap_or(SessionSource::Unknown),
                 );
                 builder.model_provider = patch.model_provider.clone();
-                builder.thread_source = patch.thread_source.flatten();
+                builder.thread_source = patch.thread_source.clone().flatten();
                 builder.agent_nickname = patch.agent_nickname.clone().flatten();
                 builder.agent_role = patch.agent_role.clone().flatten();
                 builder.agent_path = patch.agent_path.clone().flatten();
@@ -625,7 +625,6 @@ mod tests {
     use crate::ListThreadsParams;
     use crate::ResumeThreadParams;
     use crate::SortDirection;
-    use crate::ThreadEventPersistenceMode;
     use crate::ThreadMetadataPatch;
     use crate::ThreadPersistenceMetadata;
     use crate::ThreadSortKey;
@@ -788,7 +787,6 @@ mod tests {
                 history: None,
                 include_archived: true,
                 metadata: test_thread_metadata(),
-                event_persistence_mode: ThreadEventPersistenceMode::Limited,
             })
             .await
             .expect("resume external live thread");
@@ -1478,6 +1476,7 @@ mod tests {
                 cwd_filters: Some(vec![workspace]),
                 archived: false,
                 search_term: None,
+                parent_thread_id: None,
                 use_state_db_only: true,
             })
             .await
@@ -1590,7 +1589,6 @@ mod tests {
                 history: None,
                 include_archived: true,
                 metadata: test_thread_metadata(),
-                event_persistence_mode: ThreadEventPersistenceMode::Limited,
             })
             .await
             .expect("resume archived live thread");

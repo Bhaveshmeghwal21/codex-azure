@@ -11,14 +11,16 @@ use crate::Cli;
 use crate::app_server_session::AppServerSession;
 use crate::legacy_core::config::ConfigBuilder;
 use crate::legacy_core::config::ConfigOverrides;
-use crate::legacy_core::config::load_config_as_toml_with_cli_and_load_options;
+use crate::legacy_core::config::load_config_toml_with_layer_stack;
+use crate::legacy_core::config::resolve_bootstrap_auth_keyring_backend_kind;
 use crate::legacy_core::config::resolve_oss_provider;
 use crate::legacy_core::config::resolve_profile_v2_config_path;
 use codex_app_server_protocol::Thread as AppServerThread;
 use codex_app_server_protocol::ThreadListParams;
 use codex_app_server_protocol::ThreadSortKey;
 use codex_arg0::Arg0DispatchPaths;
-use codex_cloud_requirements::cloud_requirements_loader_for_storage;
+use codex_cloud_config::cloud_config_bundle_loader_for_storage;
+use codex_config::CloudConfigBundleLoader;
 use codex_config::ConfigLoadOptions;
 use codex_config::LoaderOverrides;
 use codex_exec_server::EnvironmentManager;
@@ -176,6 +178,7 @@ async fn lookup_session_by_exact_name(
                         /*include_non_interactive*/ false,
                     )),
                     archived: Some(archived),
+                    parent_thread_id: None,
                     cwd: None,
                     use_state_db_only: false,
                     search_term: search_term.map(str::to_string),
@@ -309,31 +312,34 @@ async fn start_app_server_for_archive_command(
         loader_overrides.user_config_profile = Some(profile_v2.clone());
     }
 
-    let config_toml = load_config_as_toml_with_cli_and_load_options(
+    let bootstrap_config = load_config_toml_with_layer_stack(
         codex_home.as_path(),
         config_cwd.as_ref(),
         cli_kv_overrides.clone(),
         ConfigLoadOptions {
             loader_overrides: loader_overrides.clone(),
             strict_config,
+            cloud_config_bundle: CloudConfigBundleLoader::default(),
         },
     )
     .await
     .wrap_err("failed to load config.toml")?;
+    let config_toml = &bootstrap_config.config_toml;
     let chatgpt_base_url = config_toml
         .chatgpt_base_url
         .clone()
         .unwrap_or_else(|| "https://chatgpt.com/backend-api/".to_string());
-    let cloud_requirements = cloud_requirements_loader_for_storage(
+    let cloud_config_bundle = cloud_config_bundle_loader_for_storage(
         codex_home.to_path_buf(),
         /*enable_codex_api_key_env*/ false,
         config_toml.cli_auth_credentials_store.unwrap_or_default(),
+        resolve_bootstrap_auth_keyring_backend_kind(&bootstrap_config)?,
         chatgpt_base_url,
     )
     .await;
 
     let model_provider = if cli.oss {
-        resolve_oss_provider(cli.oss_provider.as_deref(), &config_toml)
+        resolve_oss_provider(cli.oss_provider.as_deref(), config_toml)
     } else {
         None
     };
@@ -363,7 +369,7 @@ async fn start_app_server_for_archive_command(
         })
         .loader_overrides(loader_overrides.clone())
         .strict_config(strict_config)
-        .cloud_requirements(cloud_requirements.clone())
+        .cloud_config_bundle(cloud_config_bundle.clone())
         .build()
         .await
         .wrap_err("failed to load configuration")?;
@@ -377,7 +383,7 @@ async fn start_app_server_for_archive_command(
         cli_kv_overrides,
         loader_overrides,
         strict_config,
-        cloud_requirements,
+        cloud_config_bundle,
         codex_feedback::CodexFeedback::new(),
         /*log_db*/ None,
         state_db,
