@@ -19,7 +19,6 @@ use std::sync::PoisonError;
 
 pub(crate) struct ResearchRecordHandler;
 
-#[async_trait::async_trait]
 impl ToolExecutor<ToolInvocation> for ResearchRecordHandler {
     fn tool_name(&self) -> ToolName {
         ToolName::namespaced(RESEARCH_RECORD_TOOL_NAMESPACE, RESEARCH_RECORD_TOOL_NAME)
@@ -29,46 +28,45 @@ impl ToolExecutor<ToolInvocation> for ResearchRecordHandler {
         create_research_record_tool()
     }
 
-    async fn handle(
-        &self,
-        invocation: ToolInvocation,
-    ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallError> {
-        let ToolInvocation {
-            session, payload, ..
-        } = invocation;
-        let ToolPayload::Function { arguments } = payload else {
-            return Err(FunctionCallError::RespondToModel(
-                "research.record received unsupported payload".to_string(),
-            ));
-        };
-        let record: ResearchRecord = parse_arguments(&arguments)?;
-        let state = session
-            .services
-            .thread_extension_data
-            .get_or_init(ResearchLedgerState::default);
-        let result = state.record(record);
-        let response = ResearchRecordResponse {
-            status: "success",
-            summary: format!(
-                "Recorded {:?}: {} distinct searches, {} candidate papers, {} opened sources.",
-                result.bucket,
-                result.distinct_searches,
-                result.candidate_papers,
-                result.opened_sources
-            ),
-            next_actions: vec![result.next_action.clone()],
-            artifacts: vec!["thread research ledger".to_string()],
-            result,
-        };
-        let content = serde_json::to_string(&response).map_err(|err| {
-            FunctionCallError::RespondToModel(format!(
-                "failed to serialize research.record response: {err}"
-            ))
-        })?;
-        Ok(boxed_tool_output(FunctionToolOutput::from_text(
-            content,
-            Some(true),
-        )))
+    fn handle(&self, invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {
+        Box::pin(async move {
+            let ToolInvocation {
+                session, payload, ..
+            } = invocation;
+            let ToolPayload::Function { arguments } = payload else {
+                return Err(FunctionCallError::RespondToModel(
+                    "research.record received unsupported payload".to_string(),
+                ));
+            };
+            let record: ResearchRecord = parse_arguments(&arguments)?;
+            let state = session
+                .services
+                .thread_extension_data
+                .get_or_init(ResearchLedgerState::default);
+            let result = state.record(record);
+            let response = ResearchRecordResponse {
+                status: "success",
+                summary: format!(
+                    "Recorded {:?}: {} distinct searches, {} candidate papers, {} opened sources.",
+                    result.bucket,
+                    result.distinct_searches,
+                    result.candidate_papers,
+                    result.opened_sources
+                ),
+                next_actions: vec![result.next_action.clone()],
+                artifacts: vec!["thread research ledger".to_string()],
+                result,
+            };
+            let content = serde_json::to_string(&response).map_err(|err| {
+                FunctionCallError::RespondToModel(format!(
+                    "failed to serialize research.record response: {err}"
+                ))
+            })?;
+            Ok(boxed_tool_output(FunctionToolOutput::from_text(
+                content,
+                Some(true),
+            )))
+        })
     }
 }
 
