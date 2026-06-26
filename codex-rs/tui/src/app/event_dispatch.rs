@@ -2107,6 +2107,11 @@ impl App {
             AppEvent::KeymapCleared { context, action } => {
                 self.apply_keymap_clear(context, action).await;
             }
+            // Realtime audio/WebRTC events — not yet implemented in the Azure fork.
+            AppEvent::OpenRealtimeAudioDeviceSelection { .. } => {}
+            AppEvent::RealtimeWebrtcOfferCreated { .. } => {}
+            AppEvent::RealtimeWebrtcEvent(_) => {}
+            AppEvent::RealtimeWebrtcLocalAudioLevel(_) => {}
         }
         Ok(AppRunControl::Continue)
     }
