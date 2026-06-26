@@ -52,6 +52,39 @@ use codex_protocol::openai_models::ReasoningEffort;
 
 use crate::history_cell::HistoryCell;
 
+/// Identifies which realtime audio device kind is being configured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RealtimeAudioDeviceKind {
+    Microphone,
+    Speaker,
+}
+
+impl RealtimeAudioDeviceKind {
+    /// Human-readable noun for this device kind (used in messages).
+    pub(crate) fn noun(self) -> &'static str {
+        match self {
+            RealtimeAudioDeviceKind::Microphone => "microphone",
+            RealtimeAudioDeviceKind::Speaker => "speaker",
+        }
+    }
+}
+
+/// SDP offer produced when starting a TUI-owned realtime WebRTC session.
+#[derive(Debug, Clone)]
+pub(crate) struct RealtimeWebrtcOffer {
+    pub(crate) offer_sdp: String,
+}
+
+/// Lifecycle event from a TUI-owned realtime WebRTC peer connection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RealtimeWebrtcEvent {
+    Connected,
+    LocalAudioLevel(u16),
+    Closed,
+    Failed(String),
+}
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ThreadGoalSetMode {
     ConfirmIfExists,

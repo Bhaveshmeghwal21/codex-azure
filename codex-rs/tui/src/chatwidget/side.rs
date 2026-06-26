@@ -32,4 +32,40 @@ impl ChatWidget {
     pub(crate) fn set_side_conversation_context_label(&mut self, label: Option<String>) {
         self.bottom_pane.set_side_conversation_context_label(label);
     }
+
+    /// Update which realtime audio device is currently selected.
+    ///
+    /// Stub — realtime voice is not yet implemented in this fork.
+    pub(crate) fn set_realtime_audio_device(
+        &mut self,
+        _kind: crate::app_event::RealtimeAudioDeviceKind,
+        _name: Option<String>,
+    ) {
+    }
+
+    /// Returns `true` when a realtime WebRTC voice conversation is active.
+    ///
+    /// Stub — always returns `false` in this fork.
+    pub(crate) fn realtime_conversation_is_live(&self) -> bool {
+        false
+    }
+
+    /// Open a prompt asking the user to restart a realtime audio device.
+    ///
+    /// Stub — no-op in this fork.
+    pub(crate) fn open_realtime_audio_restart_prompt(
+        &mut self,
+        _kind: crate::app_event::RealtimeAudioDeviceKind,
+    ) {
+    }
+
+    /// Restart the given realtime audio device.
+    ///
+    /// Stub — no-op in this fork.
+    pub(crate) fn restart_realtime_audio_device(
+        &mut self,
+        _kind: crate::app_event::RealtimeAudioDeviceKind,
+    ) {
+    }
 }
+
