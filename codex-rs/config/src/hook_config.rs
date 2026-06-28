@@ -6,6 +6,29 @@ use codex_protocol::protocol::HookEventName;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Value;
+
+/// Parse a `hooks.json` string into a [`HooksFile`], tolerating plugin-author
+/// convention of using `_`-prefixed keys (e.g. `_readme`, `_comment`) as
+/// inline documentation.  Those keys are stripped before the strict
+/// `deny_unknown_fields` deserialization runs, so real unknown fields still
+/// produce an error while comment markers are silently ignored.
+pub fn hooks_file_from_json_str(s: &str) -> Result<HooksFile, serde_json::Error> {
+    let mut value: Value = serde_json::from_str(s)?;
+    strip_underscore_keys(&mut value);
+    serde_json::from_value(value)
+}
+
+/// Recursively remove any object keys that start with `_`.
+fn strip_underscore_keys(value: &mut Value) {
+    if let Value::Object(map) = value {
+        map.retain(|k, _| !k.starts_with('_'));
+        for v in map.values_mut() {
+            strip_underscore_keys(v);
+        }
+    }
+}
+
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

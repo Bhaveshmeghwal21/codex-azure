@@ -3460,7 +3460,8 @@ impl Config {
             model,
             service_tier,
             review_model,
-            model_context_window: cfg.model_context_window,
+            // Top-level model_context_window wins; provider-level is the fallback.
+            model_context_window: cfg.model_context_window.or(model_provider.model_context_window),
             model_auto_compact_token_limit: cfg.model_auto_compact_token_limit,
             model_auto_compact_token_limit_scope: cfg
                 .model_auto_compact_token_limit_scope

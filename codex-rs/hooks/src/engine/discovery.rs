@@ -12,6 +12,7 @@ use codex_config::HookEventsToml;
 use codex_config::HookHandlerConfig;
 use codex_config::HookStateToml;
 use codex_config::HooksFile;
+use codex_config::hooks_file_from_json_str;
 use codex_config::ManagedHooksRequirementsToml;
 use codex_config::MatcherGroup;
 use codex_config::RequirementSource;
@@ -320,7 +321,7 @@ fn load_hooks_json(
         }
     };
 
-    let parsed: HooksFile = match serde_json::from_str(&contents) {
+    let parsed: HooksFile = match hooks_file_from_json_str(&contents) {
         Ok(parsed) => parsed,
         Err(err) => {
             warnings.push(format!(

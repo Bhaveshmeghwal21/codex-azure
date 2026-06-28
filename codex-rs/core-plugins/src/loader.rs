@@ -12,6 +12,7 @@ use crate::store::PluginStore;
 use crate::store::plugin_version_for_source;
 use codex_config::ConfigLayerStack;
 use codex_config::HooksFile;
+use codex_config::hooks_file_from_json_str;
 use codex_config::types::McpServerConfig;
 use codex_config::types::PluginConfig;
 use codex_config::types::PluginMcpServerConfig;
@@ -954,7 +955,7 @@ fn append_plugin_hook_file(
             return;
         }
     };
-    let parsed = match serde_json::from_str::<HooksFile>(&contents) {
+    let parsed = match hooks_file_from_json_str(&contents) {
         Ok(parsed) => parsed,
         Err(err) => {
             warnings.push(format!(

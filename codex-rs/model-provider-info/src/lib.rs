@@ -133,6 +133,14 @@ pub struct ModelProviderInfo {
     /// Whether this provider supports the Responses API WebSocket transport.
     #[serde(default)]
     pub supports_websockets: bool,
+    /// Override of the model context window (in tokens) for this provider.
+    ///
+    /// When set, this value is used instead of the model's built-in context
+    /// window, allowing larger windows for providers that support them (e.g.
+    /// Azure deployments of gpt-5.4 with 1 M token context).  The top-level
+    /// `model_context_window` in `config.toml` takes precedence over this
+    /// provider-level setting if both are specified.
+    pub model_context_window: Option<i64>,
 }
 
 /// AWS SigV4 auth configuration for a model provider.
