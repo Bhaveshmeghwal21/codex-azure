@@ -41,6 +41,8 @@ fn gpt_5_bedrock_model(openai_slug: &str, bedrock_slug: &str, priority: i32) -> 
     model.priority = priority;
     model.context_window = Some(GPT_5_BEDROCK_CONTEXT_WINDOW);
     model.max_context_window = Some(GPT_5_BEDROCK_CONTEXT_WINDOW);
+    model.availability_nux = None;
+    model.upgrade = None;
     model
 }
 
@@ -71,6 +73,30 @@ mod tests {
 
     #[test]
     fn gpt_5_bedrock_models_use_bedrock_context_window() {
+        let catalog = static_model_catalog();
+
+        for model in catalog.models {
+            assert_eq!(
+                (model.context_window, model.max_context_window),
+                (
+                    Some(GPT_5_BEDROCK_CONTEXT_WINDOW),
+                    Some(GPT_5_BEDROCK_CONTEXT_WINDOW)
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn gpt_5_bedrock_models_do_not_include_availability_nux_or_upgrade() {
+        let catalog = static_model_catalog();
+
+        for model in catalog.models {
+            assert_eq!((model.availability_nux, model.upgrade), (None, None));
+        }
+    }
+
+    #[test]
+    fn gpt_5_6_bedrock_models_clone_gpt_5_5_config_with_max_reasoning_effort() {
         let catalog = static_model_catalog();
         let gpt_5_5 = catalog
             .models
