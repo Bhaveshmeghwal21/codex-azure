@@ -903,7 +903,28 @@ impl PluginsManager {
         &self,
         request: PluginInstallRequest,
     ) -> Result<PluginInstallOutcome, PluginInstallError> {
-        let resolved = find_installable_marketplace_plugin(
+        let resolved = self.resolve_installable_plugin(config_layer_stack, &request)?;
+        let plugin_id = resolved.plugin_id.clone();
+        match self.install_resolved_plugin(resolved).await {
+            Ok(outcome) => Ok(outcome),
+            Err(err) => {
+                self.track_plugin_install_failed(
+                    &plugin_id,
+                    plugin_install_error_type(&err),
+                    plugin_install_sub_error_type(&err),
+                    err.to_string(),
+                );
+                Err(err)
+            }
+        }
+    }
+
+    fn resolve_installable_plugin(
+        &self,
+        config_layer_stack: &ConfigLayerStack,
+        request: &PluginInstallRequest,
+    ) -> Result<ResolvedMarketplacePlugin, PluginInstallError> {
+        let resolved = match find_installable_marketplace_plugin(
             &request.marketplace_path,
             &request.plugin_name,
             self.restriction_product,
@@ -930,8 +951,87 @@ impl PluginsManager {
             &plugin_id,
         )
         .await
-        .map_err(PluginInstallError::from)?;
-        self.install_resolved_plugin(resolved).await
+        {
+            let err = PluginInstallError::from(err);
+            self.track_plugin_install_failed(
+                &resolved.plugin_id,
+                plugin_install_error_type(&err),
+                plugin_install_sub_error_type(&err),
+                err.to_string(),
+            );
+            return Err(err);
+        }
+        let plugin_id = resolved.plugin_id.clone();
+        match self.install_resolved_plugin(resolved).await {
+            Ok(outcome) => Ok(outcome),
+            Err(err) => {
+                self.track_plugin_install_failed(
+                    &plugin_id,
+                    plugin_install_error_type(&err),
+                    plugin_install_sub_error_type(&err),
+                    err.to_string(),
+                );
+                Err(err)
+            }
+        }
+    }
+
+    fn track_plugin_install_resolution_failed(&self, err: &MarketplaceError) {
+        let plugin_id = match err {
+            MarketplaceError::PluginNotFound {
+                plugin_name,
+                marketplace_name,
+            }
+            | MarketplaceError::PluginNotAvailable {
+                plugin_name,
+                marketplace_name,
+            } => PluginId::new(plugin_name.clone(), marketplace_name.clone()).ok(),
+            MarketplaceError::Io { .. }
+            | MarketplaceError::MarketplaceNotFound { .. }
+            | MarketplaceError::InvalidMarketplaceFile { .. }
+            | MarketplaceError::PluginsDisabled
+            | MarketplaceError::InvalidPlugin(_) => None,
+        };
+        if let Some(plugin_id) = plugin_id {
+            self.track_plugin_install_failed(
+                &plugin_id,
+                marketplace_error_type(err),
+                /*sub_error_type*/ None,
+                err.to_string(),
+            );
+        } else {
+            tracing::warn!(
+                error_type = %marketplace_error_type(err),
+                error = %err,
+                "plugin install failed while resolving marketplace plugin"
+            );
+        }
+    }
+
+    fn track_plugin_install_failed(
+        &self,
+        plugin_id: &PluginId,
+        error_type: &'static str,
+        sub_error_type: Option<String>,
+        error_message: String,
+    ) {
+        tracing::warn!(
+            plugin_id = %plugin_id.as_key(),
+            error_type = %error_type,
+            sub_error_type = sub_error_type.as_deref(),
+            error = %error_message,
+            "plugin install failed"
+        );
+        let analytics_events_client = match self.analytics_events_client.read() {
+            Ok(client) => client.clone(),
+            Err(err) => err.into_inner().clone(),
+        };
+        if let Some(analytics_events_client) = analytics_events_client {
+            analytics_events_client.track_plugin_install_failed(
+                self.telemetry_metadata_for_plugin_id(plugin_id),
+                error_type.to_string(),
+            );
+        }
     }
 
     async fn install_resolved_plugin(
@@ -1968,6 +2068,64 @@ impl PluginInstallError {
                     | MarketplaceError::InvalidPlugin(_)
             ) | Self::Store(PluginStoreError::Invalid(_))
         )
+    }
+}
+
+fn plugin_install_error_type(err: &PluginInstallError) -> &'static str {
+    match err {
+        PluginInstallError::Marketplace(err) => marketplace_error_type(err),
+        PluginInstallError::Remote(err) => remote_plugin_mutation_error_type(err),
+        PluginInstallError::Store(err) => plugin_store_error_type(err),
+        PluginInstallError::Config(_) => "config",
+        PluginInstallError::Join(_) => "join",
+    }
+}
+
+fn plugin_install_sub_error_type(err: &PluginInstallError) -> Option<String> {
+    match err {
+        PluginInstallError::Store(err) => err.sub_error_type(),
+        PluginInstallError::Marketplace(_)
+        | PluginInstallError::Remote(_)
+        | PluginInstallError::Config(_)
+        | PluginInstallError::Join(_) => None,
+    }
+}
+
+fn marketplace_error_type(err: &MarketplaceError) -> &'static str {
+    match err {
+        MarketplaceError::Io { .. } => "marketplace_io",
+        MarketplaceError::MarketplaceNotFound { .. } => "marketplace_not_found",
+        MarketplaceError::InvalidMarketplaceFile { .. } => "invalid_marketplace_file",
+        MarketplaceError::PluginNotFound { .. } => "plugin_not_found",
+        MarketplaceError::PluginNotAvailable { .. } => "plugin_not_available",
+        MarketplaceError::PluginsDisabled => "plugins_disabled",
+        MarketplaceError::InvalidPlugin(_) => "invalid_plugin",
+    }
+}
+
+fn remote_plugin_mutation_error_type(err: &RemotePluginMutationError) -> &'static str {
+    match err {
+        RemotePluginMutationError::AuthRequired => "remote_mutation_auth_required",
+        RemotePluginMutationError::UnsupportedAuthMode => "remote_mutation_unsupported_auth_mode",
+        RemotePluginMutationError::AuthToken(_) => "remote_mutation_auth_token",
+        RemotePluginMutationError::InvalidBaseUrl(_) => "remote_mutation_invalid_base_url",
+        RemotePluginMutationError::InvalidBaseUrlPath => "remote_mutation_invalid_base_url_path",
+        RemotePluginMutationError::Request { .. } => "remote_mutation_request",
+        RemotePluginMutationError::UnexpectedStatus { .. } => "remote_mutation_unexpected_status",
+        RemotePluginMutationError::Decode { .. } => "remote_mutation_decode",
+        RemotePluginMutationError::UnexpectedPluginId { .. } => {
+            "remote_mutation_unexpected_plugin_id"
+        }
+        RemotePluginMutationError::UnexpectedEnabledState { .. } => {
+            "remote_mutation_unexpected_enabled_state"
+        }
+    }
+}
+
+fn plugin_store_error_type(err: &PluginStoreError) -> &'static str {
+    match err {
+        PluginStoreError::Io { .. } => "store_io",
+        PluginStoreError::Invalid(_) => "store_invalid",
     }
 }
 
