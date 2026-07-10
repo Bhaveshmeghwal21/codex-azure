@@ -95,9 +95,7 @@ async fn forward_events_filters_private_events_before_blocked_send_is_cancelled(
             status: None,
             call_id: "call-1".to_string(),
             name: "tool".to_string(),
-            namespace: None,
             input: "{}".to_string(),
-            internal_chat_message_metadata_passthrough: None,
         },
     });
     for id in ["visible-1", "visible-2", "blocked"] {

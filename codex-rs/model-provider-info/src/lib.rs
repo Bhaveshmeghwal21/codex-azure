@@ -407,6 +407,7 @@ impl ModelProviderInfo {
 
     pub fn supports_remote_compaction(&self) -> bool {
         self.is_openai()
+            || codex_api::is_azure_responses_provider(&self.name, self.base_url.as_deref())
     }
 
     pub fn has_command_auth(&self) -> bool {

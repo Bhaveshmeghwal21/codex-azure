@@ -29,7 +29,6 @@ fn strip_underscore_keys(value: &mut Value) {
     }
 }
 
-
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HooksFile {

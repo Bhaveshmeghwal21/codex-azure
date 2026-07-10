@@ -316,6 +316,13 @@ fn azure_responses_request_omits_null_encrypted_content_on_wire() {
             /*effort*/ None,
             codex_protocol::config_types::ReasoningSummary::Auto,
             /*service_tier*/ None,
+            &test_responses_metadata_for_client(
+                &client,
+                /*turn_id*/ None,
+                "w1".to_string(),
+                /*parent_thread_id*/ None,
+                TestCodexResponsesRequestKind::Turn,
+            ),
         )
         .expect("request should build");
 

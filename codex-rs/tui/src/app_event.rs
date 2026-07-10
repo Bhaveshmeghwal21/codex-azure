@@ -84,7 +84,6 @@ pub(crate) enum RealtimeWebrtcEvent {
     Failed(String),
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ThreadGoalSetMode {
     ConfirmIfExists,
