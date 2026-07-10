@@ -11,7 +11,6 @@ use crate::remote::RemoteInstalledPlugin;
 use crate::store::PluginStore;
 use crate::store::plugin_version_for_source;
 use codex_config::ConfigLayerStack;
-use codex_config::HooksFile;
 use codex_config::hooks_file_from_json_str;
 use codex_config::types::McpServerConfig;
 use codex_config::types::PluginConfig;

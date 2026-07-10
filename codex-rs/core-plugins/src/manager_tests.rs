@@ -1863,13 +1863,16 @@ async fn install_plugin_updates_config_with_relative_path_and_plugin_key() {
     .unwrap();
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "sample-plugin".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                repo_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &codex_config::ConfigLayerStack::default(),
+            PluginInstallRequest {
+                plugin_name: "sample-plugin".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    repo_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 
@@ -1897,13 +1900,16 @@ async fn install_openai_curated_plugin_uses_short_sha_cache_version() {
     write_curated_plugin_sha(tmp.path(), TEST_CURATED_PLUGIN_SHA);
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "slack".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                curated_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &codex_config::ConfigLayerStack::default(),
+            PluginInstallRequest {
+                plugin_name: "slack".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    curated_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 
@@ -1955,13 +1961,16 @@ async fn install_plugin_uses_manifest_version_for_non_curated_plugins() {
     .unwrap();
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "sample-plugin".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                repo_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &codex_config::ConfigLayerStack::default(),
+            PluginInstallRequest {
+                plugin_name: "sample-plugin".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    repo_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 
@@ -2012,13 +2021,16 @@ async fn install_plugin_supports_git_subdir_marketplace_sources() {
     .unwrap();
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "toolkit".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                repo_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &codex_config::ConfigLayerStack::default(),
+            PluginInstallRequest {
+                plugin_name: "toolkit".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    repo_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 
@@ -2063,13 +2075,16 @@ async fn install_plugin_supports_relative_git_subdir_marketplace_sources() {
     .unwrap();
 
     let result = PluginsManager::new(tmp.path().to_path_buf())
-        .install_plugin(PluginInstallRequest {
-            plugin_name: "toolkit".to_string(),
-            marketplace_path: AbsolutePathBuf::try_from(
-                repo_root.join(".agents/plugins/marketplace.json"),
-            )
-            .unwrap(),
-        })
+        .install_plugin(
+            &codex_config::ConfigLayerStack::default(),
+            PluginInstallRequest {
+                plugin_name: "toolkit".to_string(),
+                marketplace_path: AbsolutePathBuf::try_from(
+                    repo_root.join(".agents/plugins/marketplace.json"),
+                )
+                .unwrap(),
+            },
+        )
         .await
         .unwrap();
 

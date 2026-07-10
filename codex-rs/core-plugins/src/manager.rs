@@ -901,6 +901,7 @@ impl PluginsManager {
 
     pub async fn install_plugin(
         &self,
+        config_layer_stack: &ConfigLayerStack,
         request: PluginInstallRequest,
     ) -> Result<PluginInstallOutcome, PluginInstallError> {
         let resolved = self.resolve_installable_plugin(config_layer_stack, &request)?;
@@ -928,8 +929,30 @@ impl PluginsManager {
             &request.marketplace_path,
             &request.plugin_name,
             self.restriction_product,
-        )?;
-        self.install_resolved_plugin(resolved).await
+        ) {
+            Ok(resolved) => resolved,
+            Err(err) => {
+                self.track_plugin_install_resolution_failed(&err);
+                return Err(err.into());
+            }
+        };
+        if let Err(message) =
+            MarketplacePolicy::from_requirements(config_layer_stack.requirements())
+                .validate_install(
+                    config_layer_stack,
+                    self.codex_home.as_path(),
+                    &request.marketplace_path,
+                    &resolved.plugin_id.marketplace_name,
+                )
+        {
+            let err = MarketplaceError::InvalidMarketplaceFile {
+                path: request.marketplace_path.to_path_buf(),
+                message,
+            };
+            self.track_plugin_install_resolution_failed(&err);
+            return Err(err.into());
+        }
+        Ok(resolved)
     }
 
     pub async fn install_plugin_with_remote_sync(
@@ -938,14 +961,10 @@ impl PluginsManager {
         auth: Option<&CodexAuth>,
         request: PluginInstallRequest,
     ) -> Result<PluginInstallOutcome, PluginInstallError> {
-        let resolved = find_installable_marketplace_plugin(
-            &request.marketplace_path,
-            &request.plugin_name,
-            self.restriction_product,
-        )?;
+        let resolved = self.resolve_installable_plugin(&config.config_layer_stack, &request)?;
         let plugin_id = resolved.plugin_id.as_key();
         // This only forwards the backend mutation before the local install flow.
-        crate::remote_legacy::enable_remote_plugin(
+        if let Err(err) = crate::remote_legacy::enable_remote_plugin(
             &remote_plugin_service_config(config),
             auth,
             &plugin_id,
@@ -1022,16 +1041,8 @@ impl PluginsManager {
             error = %error_message,
             "plugin install failed"
         );
-        let analytics_events_client = match self.analytics_events_client.read() {
-            Ok(client) => client.clone(),
-            Err(err) => err.into_inner().clone(),
-        };
-        if let Some(analytics_events_client) = analytics_events_client {
-            analytics_events_client.track_plugin_install_failed(
-                self.telemetry_metadata_for_plugin_id(plugin_id),
-                error_type.to_string(),
-            );
-        }
+        // analytics track_plugin_install_failed / telemetry_metadata_for_plugin_id
+        // are not yet available in this fork — tracking is done via tracing::warn above.
     }
 
     async fn install_resolved_plugin(
