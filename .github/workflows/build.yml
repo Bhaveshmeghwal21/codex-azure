@@ -32,25 +32,21 @@ jobs:
         shell: pwsh
         run: |
           $log = "cargo-build.log"
-          $err = "cargo-build.err"
-          $process = Start-Process `
-            -FilePath cargo `
-            -ArgumentList @("build", "--release", "-p", "codex-cli", "--bin", "codex") `
-            -NoNewWindow `
-            -Wait `
-            -PassThru `
-            -RedirectStandardOutput $log `
-            -RedirectStandardError $err
-          $exitCode = $process.ExitCode
-          Get-Content $log
-          Get-Content $err
+          $env:CARGO_TERM_COLOR = "never"
+          cargo build --release -p codex-cli --bin codex 2>&1 | Tee-Object -FilePath $log
+          $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) {
-            $tail = Get-Content $err -Tail 180 | Out-String
-            $message = $tail `
-              -replace '%', '%25' `
-              -replace "`r", '%0D' `
-              -replace "`n", '%0A'
-            Write-Host "::error title=Rust build failed::$message"
+            $tail = @(Get-Content $log -Tail 200)
+            $chunkSize = 20
+            for ($i = 0; $i -lt $tail.Count; $i += $chunkSize) {
+              $end = [Math]::Min($i + $chunkSize - 1, $tail.Count - 1)
+              $chunk = $tail[$i..$end] -join "`n"
+              $message = $chunk `
+                -replace '%', '%25' `
+                -replace "`r", '%0D' `
+                -replace "`n", '%0A'
+              Write-Host "::error title=Rust build output::$message"
+            }
             exit $exitCode
           }
 
@@ -61,7 +57,6 @@ jobs:
           name: cargo-build-log
           path: |
             codex-rs/cargo-build.log
-            codex-rs/cargo-build.err
           if-no-files-found: ignore
 
       - name: Upload codex.exe artifact
