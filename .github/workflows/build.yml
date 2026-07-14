@@ -29,12 +29,23 @@ jobs:
 
       - name: Build codex CLI
         working-directory: codex-rs
+        shell: pwsh
         run: |
           $log = "cargo-build.log"
-          cargo build --release -p codex-cli --bin codex 2>&1 | Tee-Object -FilePath $log
-          $exitCode = $LASTEXITCODE
+          $err = "cargo-build.err"
+          $process = Start-Process `
+            -FilePath cargo `
+            -ArgumentList @("build", "--release", "-p", "codex-cli", "--bin", "codex") `
+            -NoNewWindow `
+            -Wait `
+            -PassThru `
+            -RedirectStandardOutput $log `
+            -RedirectStandardError $err
+          $exitCode = $process.ExitCode
+          Get-Content $log
+          Get-Content $err
           if ($exitCode -ne 0) {
-            $tail = Get-Content $log -Tail 120 | Out-String
+            $tail = Get-Content $err -Tail 180 | Out-String
             $message = $tail `
               -replace '%', '%25' `
               -replace "`r", '%0D' `
@@ -42,6 +53,16 @@ jobs:
             Write-Host "::error title=Rust build failed::$message"
             exit $exitCode
           }
+
+      - name: Upload cargo build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-build-log
+          path: |
+            codex-rs/cargo-build.log
+            codex-rs/cargo-build.err
+          if-no-files-found: ignore
 
       - name: Upload codex.exe artifact
         uses: actions/upload-artifact@v4
