@@ -1076,34 +1076,19 @@ impl ModelClientSession {
             return None;
         }
 
-        // To compare the inputs, we concatenate the previous request items with the response items,
-        // then compare that against the equivalent slice of request items, ignoring metadata. If
-        // they match, we can consider the remaining items the incremental request.
-        let mut previous_items = previous_request.input.clone();
-        if let Some(response) = last_response {
-            previous_items.extend_from_slice(&response.items_added);
+        let mut baseline = previous_request.input.clone();
+        if let Some(last_response) = last_response {
+            baseline.extend(last_response.items_added.clone());
         }
-        previous_items
-            .iter_mut()
-            .for_each(ResponseItem::clear_internal_chat_message_metadata_passthrough);
 
-        let Some((request_items_to_compare, incremental_items)) =
-            request.input.split_at_checked(previous_items.len())
-        else {
-            trace!("incremental request failed, incompatible request length");
-            return None;
-        };
-        let mut request_prefix = request_items_to_compare.to_vec();
-        request_prefix
-            .iter_mut()
-            .for_each(ResponseItem::clear_internal_chat_message_metadata_passthrough);
-
-        if previous_items != request_prefix {
+        let baseline_len = baseline.len();
+        if request.input.starts_with(&baseline)
+            && (allow_empty_delta || baseline_len < request.input.len())
+        {
+            Some(request.input[baseline_len..].to_vec())
+        } else {
             trace!("incremental request failed, items didn't match");
-            return None;
-        }
-        if !allow_empty_delta && incremental_items.is_empty() {
-            return None;
+            None
         }
     }
 
