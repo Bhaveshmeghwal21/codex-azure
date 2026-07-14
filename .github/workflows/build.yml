@@ -29,7 +29,19 @@ jobs:
 
       - name: Build codex CLI
         working-directory: codex-rs
-        run: cargo build --release -p codex-cli --bin codex
+        run: |
+          $log = "cargo-build.log"
+          cargo build --release -p codex-cli --bin codex 2>&1 | Tee-Object -FilePath $log
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) {
+            $tail = Get-Content $log -Tail 120 | Out-String
+            $message = $tail `
+              -replace '%', '%25' `
+              -replace "`r", '%0D' `
+              -replace "`n", '%0A'
+            Write-Host "::error title=Rust build failed::$message"
+            exit $exitCode
+          }
 
       - name: Upload codex.exe artifact
         uses: actions/upload-artifact@v4
