@@ -1487,15 +1487,6 @@ impl PluginRequestProcessor {
             )
             .await
             .map_err(|err| {
-                let error_type = remote_plugin_catalog_error_type(&err);
-                self.track_plugin_install_failed_for_remote_plugin(
-                    &remote_plugin_id,
-                    &remote_marketplace_name,
-                    /*plugin_id*/ None,
-                    error_type,
-                    /*sub_error_type*/ None,
-                    err.to_string(),
-                );
                 remote_plugin_catalog_error_to_jsonrpc(
                     err,
                     "read remote plugin details before install",
@@ -1528,38 +1519,14 @@ impl PluginRequestProcessor {
             remote_detail.bundle_download_url.as_deref(),
             remote_detail.app_manifest.clone(),
         )
-        .map_err(|err| {
-            let error_type = remote_plugin_bundle_install_error_type(&err);
-            let sub_error_type = err.sub_error_type();
-            self.track_plugin_install_failed_for_remote_plugin(
-                &remote_plugin_id,
-                &actual_remote_marketplace_name,
-                Some(&resolved_plugin_id),
-                error_type,
-                sub_error_type,
-                err.to_string(),
-            );
-            remote_plugin_bundle_install_error_to_jsonrpc(err)
-        })?;
+        .map_err(remote_plugin_bundle_install_error_to_jsonrpc)?;
 
         let result = codex_core_plugins::remote_bundle::download_and_install_remote_plugin_bundle(
             config.codex_home.to_path_buf(),
             validated_bundle,
         )
         .await
-        .map_err(|err| {
-            let error_type = remote_plugin_bundle_install_error_type(&err);
-            let sub_error_type = err.sub_error_type();
-            self.track_plugin_install_failed_for_remote_plugin(
-                &remote_plugin_id,
-                &actual_remote_marketplace_name,
-                Some(&resolved_plugin_id),
-                error_type,
-                sub_error_type,
-                err.to_string(),
-            );
-            remote_plugin_bundle_install_error_to_jsonrpc(err)
-        })?;
+        .map_err(remote_plugin_bundle_install_error_to_jsonrpc)?;
 
         // Cache first so a backend install cannot succeed when local materialization fails.
         // If this backend call fails, the cache entry is harmless because remote installed state
@@ -1571,18 +1538,7 @@ impl PluginRequestProcessor {
             &remote_plugin_id,
         )
         .await
-        .map_err(|err| {
-            let error_type = remote_plugin_catalog_error_type(&err);
-            self.track_plugin_install_failed_for_remote_plugin(
-                &remote_plugin_id,
-                &actual_remote_marketplace_name,
-                Some(&result.plugin_id),
-                error_type,
-                /*sub_error_type*/ None,
-                err.to_string(),
-            );
-            remote_plugin_catalog_error_to_jsonrpc(err, "install remote plugin")
-        })?;
+        .map_err(|err| remote_plugin_catalog_error_to_jsonrpc(err, "install remote plugin"))?;
 
         self.thread_manager
             .plugins_manager()
@@ -1659,38 +1615,6 @@ impl PluginRequestProcessor {
             auth_policy: remote_detail.summary.auth_policy,
             apps_needing_auth,
         })
-    }
-
-    fn track_plugin_install_failed_for_remote_plugin(
-        &self,
-        remote_plugin_id: &str,
-        marketplace_name: &str,
-        plugin_id: Option<&PluginId>,
-        error_type: &'static str,
-        sub_error_type: Option<String>,
-        error_message: String,
-    ) {
-        tracing::warn!(
-            remote_plugin_id = %remote_plugin_id,
-            marketplace_name = %marketplace_name,
-            error_type = %error_type,
-            sub_error_type = sub_error_type.as_deref(),
-            error = %error_message,
-            "remote plugin install failed"
-        );
-        let plugin = if let Some(plugin_id) = plugin_id {
-            self.thread_manager
-                .plugins_manager()
-                .telemetry_metadata_for_plugin_id_with_remote_id(plugin_id, remote_plugin_id)
-        } else {
-            PluginTelemetryMetadata {
-                plugin_id: None,
-                remote_plugin_id: Some(remote_plugin_id.to_string()),
-                capability_summary: None,
-            }
-        };
-        self.analytics_events_client
-            .track_plugin_install_failed(plugin, error_type.to_string());
     }
 
     async fn plugin_apps_needing_auth_for_install(
