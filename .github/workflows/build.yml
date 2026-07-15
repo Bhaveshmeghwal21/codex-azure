@@ -219,12 +219,14 @@ jobs:
           log="cargo-build.log"
 
           if ! cargo build --locked --release -p codex-cli --bin codex 2>&1 | tee "$log"; then
-            while IFS= read -r line; do
-              line="${line//%/%25}"
-              line="${line//$'\r'/%0D}"
-              line="${line//$'\n'/%0A}"
-              echo "::error title=Rust build output::$line"
-            done < <(tail -n 200 "$log")
+            summary="$(grep -E '(^|[[:space:]])(error(\[[A-Z0-9]+\])?:|failed to|could not compile|linking with|collect2:|fatal error:|undefined reference)' "$log" | tail -n 40 || true)"
+            if [[ -z "$summary" ]]; then
+              summary="$(tail -n 40 "$log")"
+            fi
+            summary="${summary//%/%25}"
+            summary="${summary//$'\r'/%0D}"
+            summary="${summary//$'\n'/%0A}"
+            echo "::error title=Rust build summary::$summary"
             exit 1
           fi
 
