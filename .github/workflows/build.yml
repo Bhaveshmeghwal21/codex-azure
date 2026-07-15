@@ -4,17 +4,31 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: build-codex-cli-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  CARGO_TERM_COLOR: never
+
 jobs:
-  build:
-    name: Build Windows release binary
+  build-windows:
+    name: Build Codex CLI (Windows)
     runs-on: windows-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install stable Rust
+      - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -32,8 +46,7 @@ jobs:
         shell: pwsh
         run: |
           $log = "cargo-build.log"
-          $env:CARGO_TERM_COLOR = "never"
-          cargo build --release -p codex-cli --bin codex 2>&1 | Tee-Object -FilePath $log
+          cargo build --locked --release -p codex-cli --bin codex 2>&1 | Tee-Object -FilePath $log
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) {
             $tail = @(Get-Content $log -Tail 200)
@@ -54,14 +67,130 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cargo-build-log
-          path: |
-            codex-rs/cargo-build.log
+          name: cargo-build-log-windows
+          path: codex-rs/cargo-build.log
           if-no-files-found: ignore
 
       - name: Upload codex.exe artifact
         uses: actions/upload-artifact@v4
         with:
-          name: codex-exe
+          name: codex-windows-x86_64
           path: codex-rs/target/release/codex.exe
+          if-no-files-found: error
+
+  build-linux:
+    name: Build Codex CLI (Ubuntu ${{ matrix.ubuntu_version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container:
+      image: ${{ matrix.image }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ubuntu_version: "20.04"
+            image: ubuntu:20.04
+            artifact_name: codex-linux-x86_64-ubuntu-20.04
+          - ubuntu_version: "22.04+"
+            image: ubuntu:22.04
+            artifact_name: codex-linux-x86_64-ubuntu-22.04-plus
+
+    steps:
+      - name: Install Linux build prerequisites
+        shell: bash
+        env:
+          UBUNTU_VERSION: ${{ matrix.ubuntu_version }}
+        run: |
+          set -euo pipefail
+
+          # Ubuntu 20.04 is an EOL compatibility baseline. Its packages are
+          # served from old-releases.ubuntu.com after the standard mirrors
+          # stop carrying that release.
+          if [[ "$UBUNTU_VERSION" == "20.04" ]]; then
+            sed -i -E \
+              's#https?://(archive|security).ubuntu.com/ubuntu/?#http://old-releases.ubuntu.com/ubuntu/#g' \
+              /etc/apt/sources.list
+          fi
+
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            binutils \
+            build-essential \
+            ca-certificates \
+            clang \
+            cmake \
+            curl \
+            git \
+            libcap-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            perl \
+            pkg-config \
+            python3 \
+            tar \
+            xz-utils
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            codex-rs/target
+          key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-cargo-${{ hashFiles('codex-rs/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.ubuntu_version }}-cargo-
+            ${{ runner.os }}-cargo-
+
+      - name: Build and package codex CLI
+        working-directory: codex-rs
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ matrix.artifact_name }}
+        run: |
+          set -euo pipefail
+          log="cargo-build.log"
+
+          if ! cargo build --locked --release -p codex-cli --bin codex 2>&1 | tee "$log"; then
+            while IFS= read -r line; do
+              line="${line//%/%25}"
+              line="${line//$'\r'/%0D}"
+              line="${line//$'\n'/%0A}"
+              echo "::error title=Rust build output::$line"
+            done < <(tail -n 200 "$log")
+            exit 1
+          fi
+
+          stage_dir="../dist/${ARTIFACT_NAME}"
+          mkdir -p "$stage_dir"
+          install -m 0755 target/release/codex "$stage_dir/codex"
+          tar -C "$stage_dir" -czf "../dist/${ARTIFACT_NAME}.tar.gz" codex
+          sha256sum "../dist/${ARTIFACT_NAME}.tar.gz" > "../dist/${ARTIFACT_NAME}.sha256"
+
+      - name: Upload cargo build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-build-log-${{ matrix.artifact_name }}
+          path: codex-rs/cargo-build.log
+          if-no-files-found: ignore
+
+      - name: Upload Linux codex artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            dist/${{ matrix.artifact_name }}/codex
+            dist/${{ matrix.artifact_name }}.tar.gz
+            dist/${{ matrix.artifact_name }}.sha256
           if-no-files-found: error
