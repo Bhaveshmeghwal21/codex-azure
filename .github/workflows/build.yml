@@ -108,13 +108,19 @@ jobs:
           # served from old-releases.ubuntu.com after the standard mirrors
           # stop carrying that release.
           if [[ "$UBUNTU_VERSION" == "20.04" ]]; then
-            sed -i -E \
-              's#https?://(archive|security).ubuntu.com/ubuntu/?#http://old-releases.ubuntu.com/ubuntu/#g' \
-              /etc/apt/sources.list
+            while IFS= read -r -d '' source_file; do
+              sed -i -E \
+                's#https?://(archive|security).ubuntu.com/ubuntu/?#http://old-releases.ubuntu.com/ubuntu/#g' \
+                "$source_file"
+            done < <(find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) -print0)
           fi
 
           export DEBIAN_FRONTEND=noninteractive
-          apt-get update
+          apt_update_args=()
+          if [[ "$UBUNTU_VERSION" == "20.04" ]]; then
+            apt_update_args+=("-o" "Acquire::Check-Valid-Until=false")
+          fi
+          apt-get "${apt_update_args[@]}" update
           apt-get install -y --no-install-recommends \
             binutils \
             build-essential \
