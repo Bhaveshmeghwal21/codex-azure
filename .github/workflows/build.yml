@@ -88,6 +88,9 @@ jobs:
       # sync with the upstream Codex Linux release configuration.
       AWS_LC_SYS_NO_JITTER_ENTROPY: "1"
       AWS_LC_SYS_NO_JITTER_ENTROPY_x86_64_unknown_linux_gnu: "1"
+      # Use aws-lc-sys's supported CMake builder instead of its compiler-probe
+      # path, which is unreliable with the Ubuntu 20.04 native toolchain.
+      AWS_LC_SYS_CMAKE_BUILDER: "1"
     container:
       image: ${{ matrix.image }}
 
