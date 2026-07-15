@@ -111,20 +111,28 @@ jobs:
             find /etc/apt/sources.list.d -type f \
               \( -name '*.list' -o -name '*.sources' \) -delete
             printf '%s\n' \
-              'deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20250401T000000Z focal main restricted universe multiverse' \
-              'deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20250401T000000Z focal-updates main restricted universe multiverse' \
-              'deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20250401T000000Z focal-security main restricted universe multiverse' \
+              'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20250401T000000Z focal main restricted universe multiverse' \
+              'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20250401T000000Z focal-updates main restricted universe multiverse' \
+              'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20250401T000000Z focal-security main restricted universe multiverse' \
               > /etc/apt/sources.list
           fi
 
           export DEBIAN_FRONTEND=noninteractive
-          apt_update_args=()
+          apt_common_args=()
+          apt_bootstrap_args=()
           if [[ "$UBUNTU_VERSION" == "20.04" ]]; then
-            apt_update_args+=("-o" "Acquire::Check-Valid-Until=false")
+            apt_common_args+=("-o" "Acquire::Check-Valid-Until=false")
+            apt_bootstrap_args=(
+              "${apt_common_args[@]}"
+              "-o" "Acquire::https::Verify-Peer=false"
+              "-o" "Acquire::https::Verify-Host=false"
+            )
+          else
+            apt_bootstrap_args=("${apt_common_args[@]}")
           fi
 
           apt_log=/tmp/codex-apt.log
-          if ! apt-get "${apt_update_args[@]}" update 2>&1 | tee "$apt_log"; then
+          if ! apt-get "${apt_bootstrap_args[@]}" update 2>&1 | tee "$apt_log"; then
             while IFS= read -r line; do
               line="${line//%/%25}"
               line="${line//$'\r'/%0D}"
@@ -132,6 +140,28 @@ jobs:
               echo "::error title=apt update::$line"
             done < <(tail -n 100 "$apt_log")
             exit 1
+          fi
+
+          if [[ "$UBUNTU_VERSION" == "20.04" ]]; then
+            if ! apt-get "${apt_bootstrap_args[@]}" install -y --no-install-recommends ca-certificates 2>&1 | tee -a "$apt_log"; then
+              while IFS= read -r line; do
+                line="${line//%/%25}"
+                line="${line//$'\r'/%0D}"
+                line="${line//$'\n'/%0A}"
+                echo "::error title=apt ca-certificates::$line"
+              done < <(tail -n 100 "$apt_log")
+              exit 1
+            fi
+
+            if ! apt-get "${apt_common_args[@]}" update 2>&1 | tee -a "$apt_log"; then
+              while IFS= read -r line; do
+                line="${line//%/%25}"
+                line="${line//$'\r'/%0D}"
+                line="${line//$'\n'/%0A}"
+                echo "::error title=apt verified update::$line"
+              done < <(tail -n 100 "$apt_log")
+              exit 1
+            fi
           fi
 
           if ! apt-get install -y --no-install-recommends \
