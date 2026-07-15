@@ -19,7 +19,8 @@ jobs:
   build-windows:
     name: Build Codex CLI (Windows)
     runs-on: windows-latest
-    timeout-minutes: 60
+    # Windows release builds can exceed an hour on GitHub-hosted runners.
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
