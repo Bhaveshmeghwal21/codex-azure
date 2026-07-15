@@ -79,6 +79,80 @@ jobs:
           path: codex-rs/target/release/codex.exe
           if-no-files-found: error
 
+  build-macos:
+    name: Build Codex CLI (macOS Apple Silicon)
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            codex-rs/target
+          key: ${{ runner.os }}-aarch64-apple-darwin-cargo-${{ hashFiles('codex-rs/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-aarch64-apple-darwin-cargo-
+            ${{ runner.os }}-cargo-
+
+      - name: Build and package codex CLI
+        working-directory: codex-rs
+        shell: bash
+        env:
+          ARTIFACT_NAME: codex-macos-arm64
+        run: |
+          set -euo pipefail
+          log="cargo-build.log"
+
+          if ! cargo build --target aarch64-apple-darwin --locked --release -p codex-cli --bin codex 2>&1 | tee "$log"; then
+            summary="$(grep -E '(^|[[:space:]])(error|fatal error|failed|could not|not found|No such|undefined|warning|WARNING)' "$log" | grep -v 'rerun-if-env-changed' | tail -n 80 || true)"
+            if [[ -z "$summary" ]]; then
+              summary="$(tail -n 80 "$log")"
+            fi
+            summary="${summary//%/%25}"
+            summary="${summary//$'\r'/%0D}"
+            summary="${summary//$'\n'/%0A}"
+            echo "::error title=Rust build summary::$summary"
+            exit 1
+          fi
+
+          stage_dir="../dist/${ARTIFACT_NAME}"
+          mkdir -p "$stage_dir"
+          install -m 0755 target/aarch64-apple-darwin/release/codex "$stage_dir/codex"
+          tar -C "$stage_dir" -czf "../dist/${ARTIFACT_NAME}.tar.gz" codex
+          shasum -a 256 "../dist/${ARTIFACT_NAME}.tar.gz" > "../dist/${ARTIFACT_NAME}.sha256"
+
+      - name: Upload cargo build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-build-log-macos-arm64
+          path: codex-rs/cargo-build.log
+          if-no-files-found: ignore
+
+      - name: Upload macOS codex artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-macos-arm64
+          path: |
+            dist/codex-macos-arm64/codex
+            dist/codex-macos-arm64.tar.gz
+            dist/codex-macos-arm64.sha256
+          if-no-files-found: error
+
   build-linux:
     name: Build Codex CLI (Ubuntu ${{ matrix.ubuntu_version }})
     runs-on: ubuntu-24.04
