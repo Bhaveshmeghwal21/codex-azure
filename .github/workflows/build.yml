@@ -225,9 +225,9 @@ jobs:
           log="cargo-build.log"
 
           if ! cargo build --locked --release -p codex-cli --bin codex 2>&1 | tee "$log"; then
-            summary="$(grep -n -A 200 -B 20 'aws-lc-sys' "$log" | tail -n 240 || true)"
+            summary="$(grep -E '(^|[[:space:]])(error|fatal error|CMake Error|failed|could not|not found|No such|undefined|warning|WARNING)' "$log" | grep -v 'rerun-if-env-changed' | tail -n 80 || true)"
             if [[ -z "$summary" ]]; then
-              summary="$(tail -n 240 "$log")"
+              summary="$(tail -n 80 "$log")"
             fi
             summary="${summary//%/%25}"
             summary="${summary//$'\r'/%0D}"
