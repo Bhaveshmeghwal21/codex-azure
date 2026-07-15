@@ -104,15 +104,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Ubuntu 20.04 is an EOL compatibility baseline. Its packages are
-          # served from old-releases.ubuntu.com after the standard mirrors
-          # stop carrying that release.
+          # Ubuntu 20.04 is an EOL compatibility baseline. Use a pinned,
+          # signed snapshot so the build remains reproducible after the
+          # standard mirrors stop carrying that release.
           if [[ "$UBUNTU_VERSION" == "20.04" ]]; then
-            while IFS= read -r -d '' source_file; do
-              sed -i -E \
-                's#https?://(archive|security).ubuntu.com/ubuntu/?#http://old-releases.ubuntu.com/ubuntu/#g' \
-                "$source_file"
-            done < <(find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) -print0)
+            find /etc/apt/sources.list.d -type f \
+              \( -name '*.list' -o -name '*.sources' \) -delete
+            printf '%s\n' \
+              'deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20250401T000000Z focal main restricted universe multiverse' \
+              'deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20250401T000000Z focal-updates main restricted universe multiverse' \
+              'deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20250401T000000Z focal-security main restricted universe multiverse' \
+              > /etc/apt/sources.list
           fi
 
           export DEBIAN_FRONTEND=noninteractive
