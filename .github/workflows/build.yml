@@ -82,6 +82,12 @@ jobs:
     name: Build Codex CLI (Ubuntu ${{ matrix.ubuntu_version }})
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      # aws-lc-sys's jitter-entropy probe is not compatible with the Ubuntu
+      # 20.04 toolchain. Keep the global and Cargo target-specific settings in
+      # sync with the upstream Codex Linux release configuration.
+      AWS_LC_SYS_NO_JITTER_ENTROPY: "1"
+      AWS_LC_SYS_NO_JITTER_ENTROPY_x86_64_unknown_linux_gnu: "1"
     container:
       image: ${{ matrix.image }}
 
