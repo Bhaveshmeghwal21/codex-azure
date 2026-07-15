@@ -122,8 +122,19 @@ jobs:
           if [[ "$UBUNTU_VERSION" == "20.04" ]]; then
             apt_update_args+=("-o" "Acquire::Check-Valid-Until=false")
           fi
-          apt-get "${apt_update_args[@]}" update
-          apt-get install -y --no-install-recommends \
+
+          apt_log=/tmp/codex-apt.log
+          if ! apt-get "${apt_update_args[@]}" update 2>&1 | tee "$apt_log"; then
+            while IFS= read -r line; do
+              line="${line//%/%25}"
+              line="${line//$'\r'/%0D}"
+              line="${line//$'\n'/%0A}"
+              echo "::error title=apt update::$line"
+            done < <(tail -n 100 "$apt_log")
+            exit 1
+          fi
+
+          if ! apt-get install -y --no-install-recommends \
             binutils \
             build-essential \
             ca-certificates \
@@ -138,7 +149,15 @@ jobs:
             pkg-config \
             python3 \
             tar \
-            xz-utils
+            xz-utils 2>&1 | tee -a "$apt_log"; then
+            while IFS= read -r line; do
+              line="${line//%/%25}"
+              line="${line//$'\r'/%0D}"
+              line="${line//$'\n'/%0A}"
+              echo "::error title=apt install::$line"
+            done < <(tail -n 100 "$apt_log")
+            exit 1
+          fi
 
       - name: Checkout
         uses: actions/checkout@v4
