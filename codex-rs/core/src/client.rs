@@ -1171,6 +1171,7 @@ fn azure_compatible_input_item(mut item: ResponseItem) -> Option<ResponseItem> {
         }
         ResponseItem::Message { .. }
         | ResponseItem::AgentMessage { .. }
+        | ResponseItem::AdditionalTools { .. }
         | ResponseItem::LocalShellCall { .. }
         | ResponseItem::FunctionCall { .. }
         | ResponseItem::ToolSearchCall { .. }
