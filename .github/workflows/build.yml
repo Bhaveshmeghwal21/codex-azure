@@ -20,7 +20,7 @@ jobs:
     name: Build Codex CLI (Windows)
     runs-on: windows-latest
     # Windows release builds can exceed an hour on GitHub-hosted runners.
-    timeout-minutes: 90
+    timeout-minutes: 180
 
     steps:
       - name: Checkout
@@ -82,7 +82,7 @@ jobs:
   build-macos:
     name: Build Codex CLI (macOS Apple Silicon)
     runs-on: macos-15
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: packed
 
