@@ -138,7 +138,6 @@ mod reload {
         preserve_current_provider: bool,
         preserve_current_service_tier: bool,
     ) -> anyhow::Result<Config> {
-        let preserve_current_model = role_layer_toml.get("model").is_none();
         let preserve_current_reasoning_effort =
             role_layer_toml.get("model_reasoning_effort").is_none();
         let config_layer_stack = build_config_layer_stack(config, &role_layer_toml)?;

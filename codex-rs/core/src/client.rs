@@ -328,6 +328,7 @@ fn responses_request_properties_match(
         prompt_cache_key: previous_prompt_cache_key,
         text: previous_text,
         client_metadata: _,
+        omit_null_encrypted_content: previous_omit_null_encrypted_content,
     } = previous;
     let ResponsesApiRequest {
         model: current_model,
@@ -345,6 +346,7 @@ fn responses_request_properties_match(
         prompt_cache_key: current_prompt_cache_key,
         text: current_text,
         client_metadata: _,
+        omit_null_encrypted_content: current_omit_null_encrypted_content,
     } = current;
 
     previous_model == current_model
@@ -361,6 +363,7 @@ fn responses_request_properties_match(
         && previous_service_tier == current_service_tier
         && previous_prompt_cache_key == current_prompt_cache_key
         && previous_text == current_text
+        && previous_omit_null_encrypted_content == current_omit_null_encrypted_content
 }
 
 impl WebsocketSession {
@@ -1132,6 +1135,7 @@ fn azure_compatible_input_item(mut item: ResponseItem) -> Option<ResponseItem> {
             summary,
             content,
             encrypted_content,
+            internal_chat_message_metadata_passthrough: _,
         } => {
             *encrypted_content = None;
             // Never drop a reasoning item that has an id, even if summary/content
@@ -1141,7 +1145,7 @@ fn azure_compatible_input_item(mut item: ResponseItem) -> Option<ResponseItem> {
             //   "Item 'msg_...' was provided without its required 'reasoning' item"
             // Instead, inject a minimal placeholder summary so the item is valid.
             if summary.is_empty() && content.as_ref().is_none_or(Vec::is_empty) {
-                if id.is_empty() {
+                if id.as_ref().is_none_or(|id| id.is_empty()) {
                     // No id either — safe to drop, nothing to pair against.
                     return None;
                 }
@@ -1174,7 +1178,7 @@ fn azure_compatible_input_item(mut item: ResponseItem) -> Option<ResponseItem> {
         | ResponseItem::CustomToolCall { .. }
         | ResponseItem::WebSearchCall { .. }
         | ResponseItem::ImageGenerationCall { .. }
-        | ResponseItem::CompactionTrigger
+        | ResponseItem::CompactionTrigger {}
         | ResponseItem::Other => Some(item),
     }
 }
