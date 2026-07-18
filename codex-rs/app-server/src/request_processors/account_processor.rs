@@ -396,6 +396,16 @@ impl AccountRequestProcessor {
             .login_azure_common(api_key, endpoint, api_version)
             .await
             .map(|()| LoginAccountResponse::AzureOpenAi {});
+
+        let logged_in = result.is_ok();
+        self.outgoing.send_result(request_id, result).await;
+
+        if logged_in {
+            self.send_login_success_notifications(/*login_id*/ None)
+                .await;
+        }
+    }
+
     async fn login_amazon_bedrock_v2(
         &self,
         request_id: ConnectionRequestId,
