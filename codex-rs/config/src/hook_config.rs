@@ -32,6 +32,8 @@ fn strip_underscore_keys(value: &mut Value) {
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HooksFile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     #[serde(default)]
     pub hooks: HookEventsToml,
 }
@@ -66,6 +68,8 @@ pub struct HookEventsToml {
     pub post_compact: Vec<MatcherGroup>,
     #[serde(rename = "SessionStart", default)]
     pub session_start: Vec<MatcherGroup>,
+    #[serde(rename = "SessionEnd", default)]
+    pub session_end: Vec<MatcherGroup>,
     #[serde(rename = "UserPromptSubmit", default)]
     pub user_prompt_submit: Vec<MatcherGroup>,
     #[serde(rename = "SubagentStart", default)]
@@ -85,6 +89,7 @@ impl HookEventsToml {
             pre_compact,
             post_compact,
             session_start,
+            session_end,
             user_prompt_submit,
             subagent_start,
             subagent_stop,
@@ -96,6 +101,7 @@ impl HookEventsToml {
             && pre_compact.is_empty()
             && post_compact.is_empty()
             && session_start.is_empty()
+            && session_end.is_empty()
             && user_prompt_submit.is_empty()
             && subagent_start.is_empty()
             && subagent_stop.is_empty()
@@ -110,6 +116,7 @@ impl HookEventsToml {
             pre_compact,
             post_compact,
             session_start,
+            session_end,
             user_prompt_submit,
             subagent_start,
             subagent_stop,
@@ -122,6 +129,7 @@ impl HookEventsToml {
             pre_compact,
             post_compact,
             session_start,
+            session_end,
             user_prompt_submit,
             subagent_start,
             subagent_stop,
@@ -133,7 +141,7 @@ impl HookEventsToml {
         .sum()
     }
 
-    pub fn into_matcher_groups(self) -> [(HookEventName, Vec<MatcherGroup>); 10] {
+    pub fn into_matcher_groups(self) -> [(HookEventName, Vec<MatcherGroup>); 11] {
         [
             (HookEventName::PreToolUse, self.pre_tool_use),
             (HookEventName::PermissionRequest, self.permission_request),
@@ -141,6 +149,7 @@ impl HookEventsToml {
             (HookEventName::PreCompact, self.pre_compact),
             (HookEventName::PostCompact, self.post_compact),
             (HookEventName::SessionStart, self.session_start),
+            (HookEventName::SessionEnd, self.session_end),
             (HookEventName::UserPromptSubmit, self.user_prompt_submit),
             (HookEventName::SubagentStart, self.subagent_start),
             (HookEventName::SubagentStop, self.subagent_stop),

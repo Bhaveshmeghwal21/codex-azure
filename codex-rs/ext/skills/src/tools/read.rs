@@ -63,26 +63,29 @@ impl ToolExecutor<ToolCall> for ReadTool {
             validate_handle("resource", &args.resource, MAX_HANDLE_BYTES)?;
 
             let catalog = self.context.catalog(&call.turn_id, args.authority).await;
-            let package_is_available = catalog.entries.iter().any(|entry| {
+            let Some(skill_entry) = catalog.entries.iter().find(|entry| {
                 entry.enabled && entry.authority == authority && entry.id.0 == args.package
-            });
-            if !package_is_available {
+            }) else {
                 return Err(FunctionCallError::RespondToModel(
                     "skill package is not available from the requested authority".to_string(),
                 ));
-            }
+            };
+            let main_prompt = skill_entry.main_prompt.clone();
 
             let requested_resource = SkillResourceId::new(args.resource);
             let result = self
                 .context
-                .providers
-                .read(SkillReadRequest {
-                    authority,
-                    package: SkillPackageId(args.package),
-                    resource: requested_resource.clone(),
-                    host: None,
-                    mcp_resources: self.context.mcp_resources.clone(),
-                })
+                .thread_state
+                .read_skill(
+                    &self.context.providers,
+                    SkillReadRequest {
+                        authority,
+                        package: SkillPackageId(args.package),
+                        resource: requested_resource.clone(),
+                        host_snapshot: None,
+                        mcp_resources: self.context.mcp_resources.clone(),
+                    },
+                )
                 .await
                 .map_err(|err| {
                     tracing::warn!(
@@ -98,6 +101,16 @@ impl ToolExecutor<ToolCall> for ReadTool {
                 return Err(FunctionCallError::Fatal(
                     "skill provider returned a different resource".to_string(),
                 ));
+            }
+
+            if let Some(state) = self
+                .context
+                .thread_state
+                .shadow_selection_turn(&call.turn_id)
+            {
+                self.context
+                    .shadow_selection
+                    .record_invocation(&state, main_prompt.as_str());
             }
 
             external_json_output(&ReadResponse {

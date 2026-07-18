@@ -14,9 +14,12 @@ pub fn formatted_truncate_text(content: &str, policy: TruncationPolicy) -> Strin
         return content.to_string();
     }
 
+    let original_token_count = approx_token_count(content);
     let total_lines = content.lines().count();
     let result = truncate_text(content, policy);
-    format!("Total output lines: {total_lines}\n\n{result}")
+    format!(
+        "Warning: truncated output (original token count: {original_token_count})\nTotal output lines: {total_lines}\n\n{result}"
+    )
 }
 
 pub fn truncate_text(content: &str, policy: TruncationPolicy) -> String {
@@ -35,12 +38,20 @@ pub fn formatted_truncate_text_content_items_with_policy(
         .filter_map(|item| match item {
             FunctionCallOutputContentItem::InputText { text } => Some(text.as_str()),
             FunctionCallOutputContentItem::InputImage { .. }
+            | FunctionCallOutputContentItem::InputAudio { .. }
             | FunctionCallOutputContentItem::EncryptedContent { .. } => None,
         })
         .collect::<Vec<_>>();
+    let without_audio = || {
+        items
+            .iter()
+            .filter(|item| !matches!(item, FunctionCallOutputContentItem::InputAudio { .. }))
+            .cloned()
+            .collect()
+    };
 
     if text_segments.is_empty() {
-        return (items.to_vec(), None);
+        return (without_audio(), None);
     }
 
     let mut combined = String::new();
@@ -52,9 +63,10 @@ pub fn formatted_truncate_text_content_items_with_policy(
     }
 
     if combined.len() <= policy.byte_budget() {
-        return (items.to_vec(), None);
+        return (without_audio(), None);
     }
 
+    let original_token_count = approx_token_count(&combined);
     let mut out = vec![FunctionCallOutputContentItem::InputText {
         text: formatted_truncate_text(&combined, policy),
     }];
@@ -65,6 +77,7 @@ pub fn formatted_truncate_text_content_items_with_policy(
                 detail: *detail,
             })
         }
+        FunctionCallOutputContentItem::InputAudio { .. } => None,
         FunctionCallOutputContentItem::EncryptedContent { encrypted_content } => {
             Some(FunctionCallOutputContentItem::EncryptedContent {
                 encrypted_content: encrypted_content.clone(),
@@ -73,7 +86,7 @@ pub fn formatted_truncate_text_content_items_with_policy(
         FunctionCallOutputContentItem::InputText { .. } => None,
     }));
 
-    (out, Some(approx_token_count(&combined)))
+    (out, Some(original_token_count))
 }
 
 pub fn truncate_function_output_items_with_policy(
@@ -123,6 +136,7 @@ pub fn truncate_function_output_items_with_policy(
                     detail: *detail,
                 });
             }
+            FunctionCallOutputContentItem::InputAudio { .. } => {}
             FunctionCallOutputContentItem::EncryptedContent { encrypted_content } => {
                 out.push(FunctionCallOutputContentItem::EncryptedContent {
                     encrypted_content: encrypted_content.clone(),

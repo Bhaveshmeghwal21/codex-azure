@@ -8,6 +8,11 @@ license.workspace = true
 name = "codex-code-mode-host"
 path = "src/main.rs"
 
+[lib]
+doctest = false
+name = "codex_code_mode_host"
+path = "src/lib.rs"
+
 [lints]
 workspace = true
 

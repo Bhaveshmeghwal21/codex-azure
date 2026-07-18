@@ -15,11 +15,13 @@ use codex_otel::RuntimeMetricTotals;
 use codex_otel::RuntimeMetricsSummary;
 use codex_protocol::ThreadId;
 use codex_protocol::account::PlanType;
+use codex_protocol::error::UnexpectedResponseError;
 use codex_protocol::parse_command::ParsedCommand;
 use dirs::home_dir;
 use pretty_assertions::assert_eq;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use reqwest::StatusCode;
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -347,10 +349,10 @@ fn composite_cell_preserves_child_web_links() {
 
     assert_eq!(
         lines[2].hyperlinks,
-        vec![crate::terminal_hyperlinks::TerminalHyperlink {
-            columns: 0..destination.len(),
-            destination: destination.to_string(),
-        }]
+        vec![crate::terminal_hyperlinks::TerminalHyperlink::web(
+            /*columns*/ 0..destination.len(),
+            destination.to_string(),
+        )]
     );
 }
 
@@ -562,8 +564,8 @@ fn final_message_separator_hides_short_worked_label_and_includes_runtime_metrics
         responses_api_inference_time_ms: 1_940,
         responses_api_engine_iapi_ttft_ms: 410,
         responses_api_engine_service_ttft_ms: 460,
-        responses_api_engine_iapi_tbt_ms: 1_180,
-        responses_api_engine_service_tbt_ms: 1_240,
+        responses_api_engine_iapi_tbt_ms: 1_180.0,
+        responses_api_engine_service_tbt_ms: 1_240.0,
         turn_ttft_ms: 0,
         turn_ttfm_ms: 0,
     };
@@ -581,6 +583,17 @@ fn final_message_separator_hides_short_worked_label_and_includes_runtime_metrics
     assert!(rendered[0].contains("Responses API inference: 1.9s"));
     assert!(rendered[0].contains("TTFT: 410ms (iapi) 460ms (service)"));
     assert!(rendered[0].contains("TBT: 1.2s (iapi) 1.2s (service)"));
+}
+
+#[test]
+fn runtime_metrics_label_rounds_fractional_tbt_milliseconds() {
+    let summary = RuntimeMetricsSummary {
+        responses_api_engine_iapi_tbt_ms: 2.450638,
+        responses_api_engine_service_tbt_ms: 5.267279,
+        ..RuntimeMetricsSummary::default()
+    };
+
+    insta::assert_snapshot!(runtime_metrics_label(summary).expect("TBT label"), @"TBT: 2ms (iapi) 5ms (service)");
 }
 
 #[test]
@@ -698,6 +711,13 @@ fn cyber_policy_error_event_snapshot() {
 }
 
 #[test]
+fn safety_access_block_event_snapshot() {
+    let cell = new_safety_access_block_event();
+    let rendered = render_lines(&cell.display_lines(/*width*/ 80)).join("\n");
+    insta::assert_snapshot!(rendered);
+}
+
+#[test]
 fn cyber_policy_error_event_narrow_snapshot() {
     let cell = new_cyber_policy_error_event();
     let rendered = render_lines(&cell.display_lines(/*width*/ 36)).join("\n");
@@ -749,6 +769,31 @@ fn error_event_oversized_input_snapshot() {
         "Message exceeds the maximum length of 1048576 characters (1048577 provided).".to_string(),
     );
     let rendered = render_lines(&cell.display_lines(/*width*/ 120)).join("\n");
+    insta::assert_snapshot!(rendered);
+}
+
+#[test]
+fn error_event_bedrock_expired_signature_snapshot() {
+    let error = UnexpectedResponseError {
+        status: StatusCode::UNAUTHORIZED,
+        body: "Signature expired: 20260609T133205Z is now earlier than 20260614T062525Z \
+(20260614T063025Z - 5 min.)"
+            .to_string(),
+        user_message: Some(
+            "Amazon Bedrock rejected the request because its AWS signature has expired. \
+Refresh your AWS credentials and retry. If `AWS_BEARER_TOKEN_BEDROCK` is set, update or \
+unset it, then restart Codex"
+                .to_string(),
+        ),
+        url: Some("https://bedrock-mantle.us-east-2.api.aws/openai/v1/responses".to_string()),
+        cf_ray: None,
+        request_id: None,
+        identity_authorization_error: None,
+        identity_error_code: None,
+    };
+    let cell = new_error_event(error.to_string());
+    let rendered = render_lines(&cell.display_lines(/*width*/ 100)).join("\n");
+
     insta::assert_snapshot!(rendered);
 }
 
@@ -1098,6 +1143,15 @@ fn standalone_unix_update_available_history_cell_snapshot() {
 fn standalone_windows_update_available_history_cell_snapshot() {
     let cell =
         UpdateAvailableHistoryCell::new("9.9.9".to_string(), Some(UpdateAction::StandaloneWindows));
+    let rendered = render_lines(&cell.display_lines(/*width*/ 110)).join("\n");
+
+    insta::assert_snapshot!(rendered);
+}
+
+#[test]
+fn pnpm_update_available_history_cell_snapshot() {
+    let cell =
+        UpdateAvailableHistoryCell::new("9.9.9".to_string(), Some(UpdateAction::PnpmGlobalLatest));
     let rendered = render_lines(&cell.display_lines(/*width*/ 110)).join("\n");
 
     insta::assert_snapshot!(rendered);
@@ -2277,7 +2331,6 @@ fn reasoning_summary_block_returns_reasoning_cell_when_feature_disabled() {
 async fn reasoning_summary_block_respects_config_overrides() {
     let mut config = test_config().await;
     config.model = Some("gpt-3.5-turbo".to_string());
-    config.model_supports_reasoning_summaries = Some(true);
     let cell = new_reasoning_summary_block(
         vec!["**High level reasoning**\n\nDetailed reasoning goes here.".to_string()],
         &test_cwd(),

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::models::plaintext_agent_message_content;
 use codex_protocol::protocol::GuardianRiskLevel;
 use codex_protocol::protocol::GuardianUserAuthorization;
 use codex_protocol::user_input::UserInput;
@@ -455,20 +455,10 @@ pub(crate) fn collect_guardian_transcript_entries(
             }
             ResponseItem::AgentMessage {
                 author, content, ..
-            } => {
-                let text = content
-                    .iter()
-                    .filter_map(|content| match content {
-                        AgentMessageInputContent::InputText { text } => Some(text.as_str()),
-                        AgentMessageInputContent::EncryptedContent { .. } => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                (!text.trim().is_empty()).then(|| GuardianTranscriptEntry {
-                    kind: GuardianTranscriptEntryKind::Assistant,
-                    text: format!("Agent message from {author}:\n{text}"),
-                })
-            }
+            } => plaintext_agent_message_content(content).map(|text| GuardianTranscriptEntry {
+                kind: GuardianTranscriptEntryKind::Assistant,
+                text: format!("Agent message from {author}:\n{text}"),
+            }),
             ResponseItem::LocalShellCall { action, .. } => serialized_entry(
                 GuardianTranscriptEntryKind::Tool("tool shell call".to_string()),
                 serde_json::to_string(action).ok(),
@@ -693,21 +683,27 @@ For anything else, use this JSON schema:
 }"#
 }
 
+pub(super) const BUNDLED_GUARDIAN_POLICY: &str = include_str!("policy.md");
+pub(super) const BUNDLED_GUARDIAN_POLICY_TEMPLATE: &str = include_str!("policy_template.md");
+const TENANT_POLICY_CONFIG_PLACEHOLDER: &str = "{{ tenant_policy_config }}";
+
 /// Guardian policy prompt.
 ///
-/// Keep the prompt in a dedicated markdown file so reviewers can audit prompt
-/// changes directly without diffing through code. The output contract is
-/// appended from code so it stays near `guardian_output_schema()`.
+/// Keep the bundled fallback in a dedicated markdown file so reviewers can
+/// audit prompt changes directly without diffing through code. The output
+/// contract is appended from code so it stays near `guardian_output_schema()`.
 ///
 /// The template is intentionally separated from the default tenant policy
 /// configuration so workspace-managed overrides can keep the configurable
 /// section narrower than the full policy.
-pub(crate) fn guardian_policy_prompt() -> String {
-    guardian_policy_prompt_with_config(include_str!("policy.md"))
-}
-
-pub(crate) fn guardian_policy_prompt_with_config(tenant_policy_config: &str) -> String {
-    let template = include_str!("policy_template.md").trim_end();
-    let prompt = template.replace("{tenant_policy_config}", tenant_policy_config.trim());
+pub(super) fn guardian_policy_prompt_with_config_and_template(
+    tenant_policy_config: &str,
+    policy_template: &str,
+) -> String {
+    let template = policy_template.trim_end();
+    let prompt = template.replace(
+        TENANT_POLICY_CONFIG_PLACEHOLDER,
+        tenant_policy_config.trim(),
+    );
     format!("{prompt}\n\n{}\n", guardian_output_contract_prompt())
 }

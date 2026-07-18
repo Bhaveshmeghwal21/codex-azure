@@ -26,6 +26,11 @@ impl ChatWidget {
             };
             self.clear_active_stream_tail();
             let (cell, source) = controller.finalize();
+            // Match newline-committed streaming behavior: once assistant output is ready to be
+            // committed into history, hide the inline status row so transcript content replaces it.
+            if cell.is_some() {
+                self.bottom_pane.hide_status_indicator();
+            }
             let deferred_history_cell =
                 if scrollback_reflow == crate::app_event::ConsolidationScrollbackReflow::Required {
                     cell
@@ -40,10 +45,17 @@ impl ChatWidget {
             if let Some(source) = source {
                 let source =
                     parse_assistant_markdown(&source, self.config.cwd.as_path()).visible_markdown;
+                let inline_visualization_context = self.thread_id.and_then(|thread_id| {
+                    crate::inline_visualization::InlineVisualizationContext::from_config(
+                        &self.config,
+                        thread_id,
+                    )
+                });
                 self.note_stream_consolidation_queued();
                 self.app_event_tx.send(AppEvent::ConsolidateAgentMessage {
                     source,
                     cwd: self.config.cwd.to_path_buf(),
+                    inline_visualization_context,
                     scrollback_reflow,
                     deferred_history_cell,
                 });
@@ -54,7 +66,7 @@ impl ChatWidget {
             self.app_event_tx.send(AppEvent::StopCommitAnimation);
         }
         if had_stream_controller {
-            self.request_completed_token_activity_output_insertion();
+            self.request_pending_usage_output_insertion_after_stream_shutdown();
         }
     }
 
@@ -115,9 +127,6 @@ impl ChatWidget {
     pub(super) fn on_plan_delta(&mut self, delta: String) {
         if self.active_mode_kind() != ModeKind::Plan {
             return;
-        }
-        if !delta.is_empty() {
-            self.record_visible_turn_activity();
         }
         if !self.transcript.plan_item_active {
             self.transcript.plan_item_active = true;
@@ -193,7 +202,7 @@ impl ChatWidget {
         if should_restore_after_stream {
             self.status_state.pending_status_indicator_restore = true;
             self.maybe_restore_status_indicator_after_stream_idle();
-            self.request_completed_token_activity_output_insertion();
+            self.request_pending_usage_output_insertion_after_stream_shutdown();
         }
     }
 
@@ -202,6 +211,11 @@ impl ChatWidget {
         // current reasoning block and extract the first bold element
         // (between **/**) as the chunk header. Show this header as status.
         self.reasoning_buffer.push_str(&delta);
+
+        if self.safety_buffering_is_waiting() {
+            self.request_redraw();
+            return;
+        }
 
         if self.unified_exec_wait_streak.is_some() {
             // Unified exec waiting should take precedence over reasoning-derived status headers.
@@ -384,7 +398,7 @@ impl ChatWidget {
     #[inline]
     pub(super) fn handle_streaming_delta(&mut self, delta: String) {
         if !delta.is_empty() {
-            self.record_visible_turn_activity();
+            self.mark_safety_buffering_agent_message_started();
         }
         if self.stream_controller.is_none() {
             // Before starting an agent stream, flush any active exec cell group.
@@ -401,10 +415,17 @@ impl ChatWidget {
                 // Reset the flag even if we don't show separator (no work was done)
                 self.transcript.needs_final_message_separator = false;
             }
-            self.stream_controller = Some(StreamController::new(
+            let inline_visualization_context = self.thread_id.and_then(|thread_id| {
+                crate::inline_visualization::InlineVisualizationContext::from_config(
+                    &self.config,
+                    thread_id,
+                )
+            });
+            self.stream_controller = Some(StreamController::new_with_inline_visualizations(
                 self.current_stream_width(/*reserved_cols*/ 2),
                 &self.config.cwd,
                 self.history_render_mode(),
+                inline_visualization_context,
             ));
         }
         if let Some(controller) = self.stream_controller.as_mut()

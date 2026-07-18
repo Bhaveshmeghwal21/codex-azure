@@ -48,7 +48,7 @@ struct EnvironmentToml {
     initialize_timeout_sec: Option<Duration>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 struct TomlEnvironmentProvider {
     default: EnvironmentDefault,
     include_local: bool,
@@ -389,12 +389,8 @@ mod tests {
 
         assert!(include_local);
         assert!(!environments.contains_key(LOCAL_ENVIRONMENT_ID));
-        assert_eq!(
-            environments["devbox"].exec_server_url(),
-            Some("ws://127.0.0.1:8765")
-        );
+        assert!(environments["devbox"].is_remote());
         assert!(environments["ssh-dev"].is_remote());
-        assert_eq!(environments["ssh-dev"].exec_server_url(), None);
         assert_eq!(
             default,
             EnvironmentDefault::EnvironmentId("ssh-dev".to_string())
@@ -580,17 +576,25 @@ mod tests {
         )
         .expect("provider");
 
+        let ExecServerTransportParams::StdioCommand {
+            command,
+            initialize_timeout,
+        } = &provider.environments[0].1
+        else {
+            panic!("expected stdio transport");
+        };
         assert_eq!(
-            provider.environments[0].1,
-            ExecServerTransportParams::StdioCommand {
-                command: StdioExecServerCommand {
-                    program: "ssh".to_string(),
-                    args: Vec::new(),
-                    env: HashMap::new(),
-                    cwd: Some(config_dir.path().join("workspace")),
-                },
-                initialize_timeout: DEFAULT_REMOTE_EXEC_SERVER_INITIALIZE_TIMEOUT,
+            command,
+            &StdioExecServerCommand {
+                program: "ssh".to_string(),
+                args: Vec::new(),
+                env: HashMap::new(),
+                cwd: Some(config_dir.path().join("workspace")),
             }
+        );
+        assert_eq!(
+            *initialize_timeout,
+            DEFAULT_REMOTE_EXEC_SERVER_INITIALIZE_TIMEOUT
         );
     }
 
@@ -617,26 +621,35 @@ mod tests {
         })
         .expect("provider");
 
+        let ExecServerTransportParams::WebSocketUrl {
+            websocket_url,
+            connect_timeout,
+            initialize_timeout,
+        } = &provider.environments[0].1
+        else {
+            panic!("expected websocket transport");
+        };
+        assert_eq!(websocket_url, "ws://127.0.0.1:8765");
+        assert_eq!(*connect_timeout, Duration::from_secs(12));
+        assert_eq!(*initialize_timeout, Duration::from_secs(34));
+
+        let ExecServerTransportParams::StdioCommand {
+            command,
+            initialize_timeout,
+        } = &provider.environments[1].1
+        else {
+            panic!("expected stdio transport");
+        };
         assert_eq!(
-            provider.environments[0].1,
-            ExecServerTransportParams::WebSocketUrl {
-                websocket_url: "ws://127.0.0.1:8765".to_string(),
-                connect_timeout: Duration::from_secs(12),
-                initialize_timeout: Duration::from_secs(34),
+            command,
+            &StdioExecServerCommand {
+                program: "ssh".to_string(),
+                args: Vec::new(),
+                env: HashMap::new(),
+                cwd: None,
             }
         );
-        assert_eq!(
-            provider.environments[1].1,
-            ExecServerTransportParams::StdioCommand {
-                command: StdioExecServerCommand {
-                    program: "ssh".to_string(),
-                    args: Vec::new(),
-                    env: HashMap::new(),
-                    cwd: None,
-                },
-                initialize_timeout: Duration::from_secs(56),
-            }
-        );
+        assert_eq!(*initialize_timeout, Duration::from_secs(56));
     }
 
     #[test]

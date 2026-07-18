@@ -163,6 +163,7 @@ pub struct AnalyticsConfig {
 pub enum AppToolApproval {
     Auto,
     Prompt,
+    Writes,
     Approve,
 }
 
@@ -177,6 +178,7 @@ pub struct AppsDefaultConfig {
     pub destructive_enabled: bool,
     #[serde(default = "default_enabled")]
     pub open_world_enabled: bool,
+    pub default_tools_approval_mode: Option<AppToolApproval>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -389,6 +391,23 @@ pub struct ConfigRequirements {
     pub enforce_residency: Option<ResidencyRequirement>,
     #[experimental("configRequirements/read.network")]
     pub network: Option<NetworkRequirements>,
+    pub models: Option<ModelsRequirements>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ModelsRequirements {
+    pub new_thread: Option<NewThreadModelDefaults>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct NewThreadModelDefaults {
+    pub model: Option<String>,
+    pub model_reasoning_effort: Option<ReasoningEffort>,
+    pub service_tier: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -422,6 +441,9 @@ pub struct ManagedHooksRequirements {
     #[serde(rename = "SessionStart")]
     #[ts(rename = "SessionStart")]
     pub session_start: Vec<ConfiguredHookMatcherGroup>,
+    #[serde(rename = "SessionEnd", default)]
+    #[ts(rename = "SessionEnd")]
+    pub session_end: Vec<ConfiguredHookMatcherGroup>,
     #[serde(rename = "UserPromptSubmit")]
     #[ts(rename = "UserPromptSubmit")]
     pub user_prompt_submit: Vec<ConfiguredHookMatcherGroup>,
@@ -556,6 +578,9 @@ pub enum ExternalAgentConfigMigrationItemType {
     #[serde(rename = "COMMANDS")]
     #[ts(rename = "COMMANDS")]
     Commands,
+    #[serde(rename = "MEMORY")]
+    #[ts(rename = "MEMORY")]
+    Memory,
     #[serde(rename = "SESSIONS")]
     #[ts(rename = "SESSIONS")]
     Sessions,
@@ -571,6 +596,13 @@ pub struct PluginsMigration {
     #[serde(rename = "pluginNames")]
     #[ts(rename = "pluginNames")]
     pub plugin_names: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct SkillMigration {
+    pub name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -617,6 +649,8 @@ pub struct MigrationDetails {
     #[serde(default)]
     pub plugins: Vec<PluginsMigration>,
     #[serde(default)]
+    pub skills: Vec<SkillMigration>,
+    #[serde(default)]
     pub sessions: Vec<SessionMigration>,
     #[serde(default)]
     pub mcp_servers: Vec<McpServerMigration>,
@@ -626,6 +660,8 @@ pub struct MigrationDetails {
     pub subagents: Vec<SubagentMigration>,
     #[serde(default)]
     pub commands: Vec<CommandMigration>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memory: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -650,12 +686,19 @@ pub struct ExternalAgentConfigDetectResponse {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct ExternalAgentConfigDetectParams {
-    /// If true, include detection under the user's home (~/.claude, ~/.codex, etc.).
+    /// If true, include detection under the user's home directory.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub include_home: bool,
     /// Zero or more working directories to include for repo-scoped detection.
     #[ts(optional = nullable)]
     pub cwds: Option<Vec<PathBuf>>,
+    /// Deprecated field retained for compatibility. This field is ignored; use `migrationSource`
+    /// to select the migration source.
+    #[ts(optional = nullable)]
+    pub source: Option<String>,
+    /// Optional migration-source selector. Missing or unrecognized values use the default source.
+    #[ts(optional = nullable)]
+    pub migration_source: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
@@ -663,17 +706,103 @@ pub struct ExternalAgentConfigDetectParams {
 #[ts(export_to = "v2/")]
 pub struct ExternalAgentConfigImportParams {
     pub migration_items: Vec<ExternalAgentConfigMigrationItem>,
+    /// Optional identifier for the product that initiated the import.
+    #[ts(optional = nullable)]
+    pub source: Option<String>,
+    /// Migration-source selector used to produce the migration items. Pass the same value to
+    /// detection and import; missing or unrecognized values use the default source.
+    #[ts(optional = nullable)]
+    pub migration_source: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
-pub struct ExternalAgentConfigImportResponse {}
+pub struct ExternalAgentConfigImportResponse {
+    pub import_id: String,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
-pub struct ExternalAgentConfigImportCompletedNotification {}
+pub struct ExternalAgentConfigImportItemTypeFailure {
+    pub item_type: ExternalAgentConfigMigrationItemType,
+    pub error_type: Option<String>,
+    pub sub_error_type: Option<String>,
+    pub failure_stage: String,
+    pub message: String,
+    pub cwd: Option<PathBuf>,
+    pub source: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExternalAgentConfigImportItemTypeSuccess {
+    pub item_type: ExternalAgentConfigMigrationItemType,
+    pub cwd: Option<PathBuf>,
+    pub source: Option<String>,
+    pub target: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExternalAgentConfigImportTypeResult {
+    pub item_type: ExternalAgentConfigMigrationItemType,
+    pub successes: Vec<ExternalAgentConfigImportItemTypeSuccess>,
+    pub failures: Vec<ExternalAgentConfigImportItemTypeFailure>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExternalAgentConfigImportHistory {
+    pub import_id: String,
+    pub completed_at_ms: i64,
+    pub successes: Vec<ExternalAgentConfigImportItemTypeSuccess>,
+    pub failures: Vec<ExternalAgentConfigImportItemTypeFailure>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExternalAgentConfigImportHistoriesReadResponse {
+    pub data: Vec<ExternalAgentConfigImportHistory>,
+    pub connectors: Vec<ExternalAgentImportedConnectorCandidate>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ExternalAgentImportedConnectorSource {
+    RemoteMcpServersConfig,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExternalAgentImportedConnectorCandidate {
+    pub name: String,
+    pub session_count: u32,
+    pub source: ExternalAgentImportedConnectorSource,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExternalAgentConfigImportProgressNotification {
+    pub import_id: String,
+    pub item_type_results: Vec<ExternalAgentConfigImportTypeResult>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ExternalAgentConfigImportCompletedNotification {
+    pub import_id: String,
+    pub item_type_results: Vec<ExternalAgentConfigImportTypeResult>,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]

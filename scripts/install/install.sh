@@ -7,6 +7,7 @@ NON_INTERACTIVE="${CODEX_NON_INTERACTIVE:-false}"
 
 BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/codex"
+CODE_MODE_HOST_BIN_PATH="$BIN_DIR/codex-code-mode-host"
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 STANDALONE_ROOT="$CODEX_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
@@ -284,8 +285,6 @@ resolve_release() {
 
 release_asset_digest_or_empty() {
   asset="$1"
-  resolved_version="$2"
-  release_json="$(download_text "$(release_metadata_url "$resolved_version")")"
 
   digest="$(printf '%s\n' "$release_metadata" | awk -F '\t' -v asset="$asset" '
     $1 == "asset" && $2 == asset {
@@ -306,16 +305,14 @@ release_asset_digest_or_empty() {
 
 release_asset_exists() {
   asset="$1"
-  resolved_version="$2"
 
-  release_asset_digest_or_empty "$asset" "$resolved_version" >/dev/null 2>&1
+  release_asset_digest_or_empty "$asset" >/dev/null 2>&1
 }
 
 release_asset_digest() {
   asset="$1"
-  resolved_version="$2"
 
-  digest="$(release_asset_digest_or_empty "$asset" "$resolved_version" || true)"
+  digest="$(release_asset_digest_or_empty "$asset" || true)"
   if [ -z "$digest" ]; then
     echo "Could not find SHA-256 digest for release asset $asset." >&2
     exit 1
@@ -329,7 +326,7 @@ package_archive_digest() {
   manifest_path="$2"
 
   digest="$(awk -v asset="$asset" '
-    $2 == asset && $1 ~ /^[0-9a-fA-F]{64}$/ {
+    $2 == asset && length($1) == 64 && $1 !~ /[^0-9a-fA-F]/ {
       print tolower($1)
       found = 1
       exit
@@ -389,27 +386,6 @@ require_command() {
     echo "$1 is required to install Codex." >&2
     exit 1
   fi
-}
-
-resolve_version() {
-  normalized_version="$(normalize_version "$RELEASE")"
-  validate_version "$normalized_version"
-
-  if [ "$normalized_version" != "latest" ]; then
-    printf '%s\n' "$normalized_version"
-    return
-  fi
-
-  release_json="$(download_text "https://api.github.com/repos/openai/codex/releases/latest")"
-  resolved="$(printf '%s\n' "$release_json" | sed -n 's/.*"tag_name":[[:space:]]*"rust-v\([^"]*\)".*/\1/p' | head -n 1)"
-
-  if [ -z "$resolved" ]; then
-    echo "Failed to resolve the latest Codex release version." >&2
-    exit 1
-  fi
-
-  validate_version "$resolved"
-  printf '%s\n' "$resolved"
 }
 
 pick_profile() {
@@ -793,7 +769,10 @@ install_package_release() {
   rm -rf "$stage_release"
   mkdir -p "$stage_release"
   tar -xzf "$archive_path" -C "$stage_release"
-  chmod 0755 "$stage_release/bin/codex" "$stage_release/codex-path/rg"
+  chmod 0755 \
+    "$stage_release/bin/codex" \
+    "$stage_release/bin/codex-code-mode-host" \
+    "$stage_release/codex-path/rg"
   if [ -f "$stage_release/codex-resources/bwrap" ]; then
     chmod 0755 "$stage_release/codex-resources/bwrap"
   fi
@@ -846,6 +825,7 @@ release_dir_is_complete() {
     package)
       [ -f "$release_dir/codex-package.json" ] &&
         [ -x "$release_dir/bin/codex" ] &&
+        [ -x "$release_dir/bin/codex-code-mode-host" ] &&
         [ -x "$release_dir/codex" ] &&
         [ -x "$release_dir/codex-path/rg" ] ||
         return 1
@@ -890,10 +870,23 @@ update_visible_command() {
   codex_relative_path="$(release_codex_relative_path "$release_dir")"
 
   replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/$codex_relative_path" "$tmp_link"
+
+  if [ "$os" = "darwin" ] && [ -x "$release_dir/bin/codex-code-mode-host" ]; then
+    replace_path_with_symlink \
+      "$CODE_MODE_HOST_BIN_PATH" \
+      "$CURRENT_LINK/bin/codex-code-mode-host" \
+      "$tmp_link"
+  elif [ "$(readlink "$CODE_MODE_HOST_BIN_PATH" 2>/dev/null || true)" = \
+    "$CURRENT_LINK/bin/codex-code-mode-host" ]; then
+    rm -f "$CODE_MODE_HOST_BIN_PATH"
+  fi
 }
 
 verify_visible_command() {
   "$BIN_PATH" --version >/dev/null
+  if [ "$os" = "darwin" ] && [ "$install_layout" = "package" ]; then
+    [ -x "$CODE_MODE_HOST_BIN_PATH" ]
+  fi
 }
 
 parse_args "$@"
@@ -955,14 +948,14 @@ else
   fi
 fi
 
-resolved_version="$(resolve_version)"
+resolve_release
 package_asset="codex-package-$vendor_target.tar.gz"
 checksum_asset="codex-package_SHA256SUMS"
-if release_asset_exists "$package_asset" "$resolved_version" &&
-  release_asset_exists "$checksum_asset" "$resolved_version"; then
+if release_asset_exists "$package_asset" &&
+  release_asset_exists "$checksum_asset"; then
   install_layout="package"
   asset="$package_asset"
-elif release_asset_exists "codex-npm-$npm_tag-$resolved_version.tgz" "$resolved_version"; then
+elif release_asset_exists "codex-npm-$npm_tag-$resolved_version.tgz"; then
   install_layout="legacy-platform-npm"
   asset="codex-npm-$npm_tag-$resolved_version.tgz"
 else
@@ -1009,12 +1002,12 @@ if ! release_dir_is_complete "$release_dir" "$resolved_version" "$vendor_target"
 
   step "Downloading Codex CLI"
   if [ "$install_layout" = "package" ]; then
-    checksum_digest="$(release_asset_digest "$checksum_asset" "$resolved_version")"
+    checksum_digest="$(release_asset_digest "$checksum_asset")"
     download_file "$checksum_url" "$checksum_path"
     verify_archive_digest "$checksum_path" "$checksum_digest"
     expected_digest="$(package_archive_digest "$asset" "$checksum_path")"
   else
-    expected_digest="$(release_asset_digest "$asset" "$resolved_version")"
+    expected_digest="$(release_asset_digest "$asset")"
   fi
   download_file "$download_url" "$archive_path"
   verify_archive_digest "$archive_path" "$expected_digest"

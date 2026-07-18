@@ -299,8 +299,14 @@ pub async fn handle(
     Ok(FunctionToolOutput::from_text(content, Some(true)))
 }
 
-fn single_local_environment_cwd(turn: &TurnContext) -> Result<&AbsolutePathBuf, FunctionCallError> {
-    let [turn_environment] = turn.environments.turn_environments.as_slice() else {
+fn single_local_environment_cwd(turn: &TurnContext) -> Result<AbsolutePathBuf, FunctionCallError> {
+    let mut environments = turn.environments.turn_environments();
+    let Some(turn_environment) = environments.next() else {
+        return Err(FunctionCallError::RespondToModel(
+            "spawn_agents_on_csv requires exactly one local environment".to_string(),
+        ));
+    };
+    if environments.next().is_some() {
         return Err(FunctionCallError::RespondToModel(
             "spawn_agents_on_csv requires exactly one local environment".to_string(),
         ));
@@ -312,5 +318,12 @@ fn single_local_environment_cwd(turn: &TurnContext) -> Result<&AbsolutePathBuf, 
         ));
     }
 
-    Ok(turn_environment.cwd())
+    // TODO(anp): Migrate spawn_agents_on_csv filesystem access to PathUri before enabling it for
+    // remote environments.
+    turn_environment.cwd().to_abs_path().map_err(|err| {
+        FunctionCallError::RespondToModel(format!(
+            "spawn_agents_on_csv cwd `{}` is not native to the Codex host: {err}",
+            turn_environment.cwd()
+        ))
+    })
 }
