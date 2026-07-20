@@ -144,9 +144,9 @@ as a minimal stub so Azure never rejects the resume with:
 |---|---|---|
 | `401 Unauthorized` | Wrong API key or endpoint | Check key and base URL format |
 | `Invalid 'response_id': 'responses'` | `base_url` missing `/openai` suffix | Use `https://RESOURCE.openai.azure.com/openai` |
-| `message provided without its required reasoning item` | Old session from pre-fix binary | Rebuild from source and replace `codex.exe` |
+| `message provided without its required reasoning item` | Old binary or incompatible replay state | Update to the latest fork build; if the existing rollout still fails, start a new session |
 | Context bar not showing | Azure not returning usage in stream | Add `stream_options = { include_usage = true }` |
-| `/compact` does nothing | Azure does not support the `/responses/compact` endpoint | Expected — use `/azure` to start a fresh session |
+| `/compact` fails | Azure endpoint or deployment does not expose remote compaction | Check the endpoint/API version; start a fresh session with `/azure` as a fallback |
 
 ---
 
@@ -154,30 +154,30 @@ as a minimal stub so Azure never rejects the resume with:
 
 ```powershell
 cd codex-rs
-cargo build --release -p codex-tui
-Copy-Item ".\target\release\codex-tui.exe" "C:\Users\<YOU>\codex.exe" -Force
+cargo build --locked --release -p codex-cli --bin codex
+Copy-Item ".\target\release\codex.exe" "C:\Users\<YOU>\codex.exe" -Force
 ```
 
-For low-RAM machines (< 8 GB free):
+For low-RAM machines, limit Cargo to one build job:
 
 ```powershell
-cargo build --profile release-light -p codex-tui
+$env:CARGO_BUILD_JOBS = "1"
+$env:CARGO_INCREMENTAL = "0"
+cargo build --locked --release -p codex-cli --bin codex
 ```
-
-The `release-light` profile disables LTO and limits parallelism, reducing peak
-RAM usage from ~4–6 GB to ~1.5–2 GB at the cost of a slightly larger binary.
 
 ---
 
 ## Building via GitHub Actions
 
-Push your changes to GitHub and let the CI build the Windows binary for you:
+Push your changes to GitHub and let the CI build the platform-specific Codex CLI artifacts:
 
 1. Ensure `.github/workflows/build.yml` exists in the repo (see the workflow file
    already committed).
 2. `git push` — the workflow triggers automatically.
-3. Go to **Actions → latest run → Artifacts** and download `codex-exe.zip`.
-4. Extract and copy `codex-tui.exe` to your PATH location as `codex.exe`.
-
-Build time on GitHub's `windows-latest` runner (16 GB RAM, 4 cores): **~20–40 min**
-for a first build, **~5–10 min** with dependency caching enabled.
+3. Go to **Actions → latest run → Artifacts** and download the artifact for your platform:
+   - `codex-windows-x86_64`
+   - `codex-macos-arm64`
+   - `codex-linux-x86_64-ubuntu-20.04`
+   - `codex-linux-x86_64-ubuntu-22.04-plus`
+4. Extract the archive and place the `codex` executable on your `PATH` (`codex.exe` on Windows).

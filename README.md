@@ -17,7 +17,7 @@ This repository tracks Codex CLI with Azure-focused and local workflow changes o
 - The app-server account API accepts an `azureOpenAi` login request and persists an `azure` model provider in `config.toml`.
 - The TUI includes `/agent` worker commands for bounded subagent delegation: `spawn`, `explore`, `review`, `test`, `implement`, and `auto`.
 - Clipboard image paste support has been adjusted for `Ctrl+V`/paste flows in the TUI.
-- The local model catalog includes a `gpt-5.5` preset with extended context settings.
+- The local model catalog includes GPT-5.6 Sol, Terra, and Luna presets while retaining GPT-5.5 and GPT-5.4 compatibility entries.
 - The root `justfile` includes Windows-aware helpers for running the Rust workspace from this checkout.
 
 ## Quickstart
@@ -59,19 +59,21 @@ From this checkout:
 
 ```shell
 cd codex-rs
-cargo build --release -p codex-tui
+cargo build --locked --release -p codex-cli --bin codex
 ```
 
 On Windows, copy the result to your PATH:
 
 ```powershell
-Copy-Item ".\target\release\codex-tui.exe" "C:\Users\<YOU>\codex.exe" -Force
+Copy-Item ".\target\release\codex.exe" "C:\Users\<YOU>\codex.exe" -Force
 ```
 
-For low-RAM machines use the lighter profile:
+For low-RAM machines, limit Cargo to one build job:
 
-```shell
-cargo build --profile release-light -p codex-tui
+```powershell
+$env:CARGO_BUILD_JOBS = "1"
+$env:CARGO_INCREMENTAL = "0"
+cargo build --locked --release -p codex-cli --bin codex
 ```
 
 After making Rust changes, run the repo helpers from the repository root:
