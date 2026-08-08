@@ -1056,7 +1056,7 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, registry: &mut Tool
 
     if crate::research::is_researcher_role(turn_context.session_source.get_agent_role().as_deref())
     {
-        planned_tools.add(ResearchRecordHandler);
+        registry.add(ResearchRecordHandler);
     }
 
     if environment_mode.has_environment() && features.enabled(Feature::RequestPermissionsTool) {

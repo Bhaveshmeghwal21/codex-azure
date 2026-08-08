@@ -176,8 +176,6 @@ mod reload {
         role_layer_toml: TomlValue,
         preserve_current_model: bool,
         developer_instructions: RoleDeveloperInstructions,
-        preserve_current_model: bool,
-        developer_instructions: RoleDeveloperInstructions,
         preserve_current_provider: bool,
         preserve_current_service_tier: bool,
     ) -> anyhow::Result<Config> {
