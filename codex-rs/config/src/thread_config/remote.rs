@@ -192,8 +192,6 @@ fn model_provider_from_proto(
         supports_websockets: provider.supports_websockets,
         model_context_window: None,
         supports_standalone_web_search: provider.supports_standalone_web_search,
-        model_context_window: None,
-        supports_standalone_web_search: provider.supports_standalone_web_search,
     };
     Ok((id, info))
 }
@@ -221,8 +219,6 @@ fn model_provider_to_proto(
         websocket_connect_timeout_ms,
         requires_openai_auth,
         supports_websockets,
-        model_context_window: _,
-        supports_standalone_web_search,
         model_context_window: _,
         supports_standalone_web_search,
     } = provider;
