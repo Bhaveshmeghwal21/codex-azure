@@ -145,6 +145,9 @@ pub struct ModelProviderInfo {
     /// `model_context_window` in `config.toml` takes precedence over this
     /// provider-level setting if both are specified.
     pub model_context_window: Option<i64>,
+    /// Whether this provider supports the standalone web-search endpoint.
+    #[serde(default)]
+    pub supports_standalone_web_search: bool,
 }
 
 /// AWS SigV4 auth configuration for a model provider.
@@ -368,6 +371,9 @@ impl ModelProviderInfo {
             requires_openai_auth: true,
             supports_websockets: true,
             model_context_window: None,
+            supports_standalone_web_search: true,
+            model_context_window: None,
+            supports_standalone_web_search: true,
         }
     }
 
@@ -402,6 +408,9 @@ impl ModelProviderInfo {
             requires_openai_auth: false,
             supports_websockets: false,
             model_context_window: None,
+            supports_standalone_web_search: false,
+            model_context_window: None,
+            supports_standalone_web_search: false,
         }
     }
 
@@ -421,6 +430,11 @@ impl ModelProviderInfo {
 
     pub fn is_amazon_bedrock(&self) -> bool {
         self.name == AMAZON_BEDROCK_PROVIDER_NAME
+    }
+
+    pub fn supports_remote_compaction(&self) -> bool {
+        self.is_openai()
+            || codex_api::is_azure_responses_provider(&self.name, self.base_url.as_deref())
     }
 
     pub fn supports_remote_compaction(&self) -> bool {
@@ -551,6 +565,9 @@ pub fn create_oss_provider_with_base_url(base_url: &str, wire_api: WireApi) -> M
         requires_openai_auth: false,
         supports_websockets: false,
         model_context_window: None,
+        supports_standalone_web_search: false,
+        model_context_window: None,
+        supports_standalone_web_search: false,
     }
 }
 

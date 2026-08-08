@@ -337,6 +337,7 @@ mod tests {
     use codex_model_provider_info::WireApi;
     use codex_model_provider_info::create_oss_provider_with_base_url;
     use codex_protocol::account::PlanType;
+    use codex_protocol::error::CodexErrorDetails;
     use http::header::AUTHORIZATION;
     use pretty_assertions::assert_eq;
     use serde_json::json;
@@ -369,7 +370,7 @@ mod tests {
                 task_id: Some("task-run-1".to_string()),
             },
             "https://auth.openai.com/api/accounts",
-            /*auth_route_config*/ None,
+            &codex_login::test_support::transport_default_auth_route_config(),
         )
         .await
         .expect("agent identity auth record should include task id")
@@ -426,7 +427,7 @@ mod tests {
             /*forced_chatgpt_workspace_id*/ None,
             /*chatgpt_base_url*/ None,
             AuthKeyringBackendKind::default(),
-            /*auth_route_config*/ None,
+            codex_login::test_support::transport_default_auth_route_config(),
         )
         .await;
         let auth = auth_manager.auth().await.expect("auth should load");
@@ -485,10 +486,12 @@ mod tests {
         });
 
         match resolve_provider_auth(Some(&auth), &provider) {
-            Err(CodexErr::UnsupportedOperation(message)) => {
-                assert_eq!(message, BEDROCK_API_KEY_UNSUPPORTED_MESSAGE);
-            }
-            Err(err) => panic!("unexpected auth error: {err:?}"),
+            Err(err) => match err.details() {
+                CodexErrorDetails::UnsupportedOperation(message) => {
+                    assert_eq!(message, BEDROCK_API_KEY_UNSUPPORTED_MESSAGE);
+                }
+                details => panic!("unexpected auth error: {details:?}"),
+            },
             Ok(_) => panic!("Bedrock API key auth should be rejected"),
         }
     }
@@ -511,7 +514,7 @@ mod tests {
                 /*forced_chatgpt_workspace_id*/ None,
                 /*chatgpt_base_url*/ None,
                 AuthKeyringBackendKind::default(),
-                /*auth_route_config*/ None,
+                codex_login::test_support::transport_default_auth_route_config(),
             )
             .await,
         );

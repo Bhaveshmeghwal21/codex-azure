@@ -30,6 +30,9 @@ base_url = "http://localhost:11434/v1"
         requires_openai_auth: false,
         supports_websockets: false,
         model_context_window: None,
+        supports_standalone_web_search: false,
+        model_context_window: None,
+        supports_standalone_web_search: false,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -65,6 +68,9 @@ query_params = { api-version = "2025-04-01-preview" }
         requires_openai_auth: false,
         supports_websockets: false,
         model_context_window: None,
+        supports_standalone_web_search: false,
+        model_context_window: None,
+        supports_standalone_web_search: false,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -79,6 +85,7 @@ base_url = "https://example.com"
 env_key = "API_KEY"
 http_headers = { "X-Example-Header" = "example-value" }
 env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
+supports_standalone_web_search = true
         "#;
     let expected_provider = ModelProviderInfo {
         name: "Example".into(),
@@ -103,6 +110,9 @@ env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
         requires_openai_auth: false,
         supports_websockets: false,
         model_context_window: None,
+        supports_standalone_web_search: true,
+        model_context_window: None,
+        supports_standalone_web_search: true,
     };
 
     let provider: ModelProviderInfo = toml::from_str(azure_provider_toml).unwrap();
@@ -133,13 +143,6 @@ supports_websockets = true
 
     let provider: ModelProviderInfo = toml::from_str(provider_toml).unwrap();
     assert_eq!(provider.websocket_connect_timeout_ms, Some(15_000));
-}
-
-#[test]
-fn test_supports_remote_compaction_for_openai() {
-    let provider = ModelProviderInfo::create_openai_provider(/*base_url*/ None);
-
-    assert!(provider.supports_remote_compaction());
 }
 
 #[test]
@@ -316,6 +319,9 @@ fn test_create_amazon_bedrock_provider() {
             requires_openai_auth: false,
             supports_websockets: false,
             model_context_window: None,
+            supports_standalone_web_search: false,
+            model_context_window: None,
+            supports_standalone_web_search: false,
         }
     );
 }

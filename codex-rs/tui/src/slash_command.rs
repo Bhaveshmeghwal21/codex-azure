@@ -47,6 +47,10 @@ pub enum SlashCommand {
     Copy,
     #[strum(to_string = "paste-image")]
     PasteImage,
+    Export,
+    #[strum(to_string = "paste-image")]
+    PasteImage,
+    Export,
     Raw,
     Diff,
     Mention,
@@ -100,6 +104,9 @@ impl SlashCommand {
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Copy => "copy last response as markdown",
             SlashCommand::PasteImage => "attach image data from the system clipboard",
+            SlashCommand::Export => "export the conversation as markdown",
+            SlashCommand::PasteImage => "attach image data from the system clipboard",
+            SlashCommand::Export => "export the conversation as markdown",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
             SlashCommand::Diff => "show git diff (including untracked files)",
             SlashCommand::Mention => "mention a file",
@@ -160,6 +167,9 @@ impl SlashCommand {
             self,
             SlashCommand::Review
                 | SlashCommand::Rename
+                | SlashCommand::New
+                | SlashCommand::Clear
+                | SlashCommand::Fork
                 | SlashCommand::Plan
                 | SlashCommand::Goal
                 | SlashCommand::Ide
@@ -168,6 +178,9 @@ impl SlashCommand {
                 | SlashCommand::MultiAgents
                 | SlashCommand::Mcp
                 | SlashCommand::Azure
+                | SlashCommand::Export
+                | SlashCommand::Azure
+                | SlashCommand::Export
                 | SlashCommand::Raw
                 | SlashCommand::Usage
                 | SlashCommand::Pets
@@ -184,6 +197,9 @@ impl SlashCommand {
             self,
             SlashCommand::Copy
                 | SlashCommand::PasteImage
+                | SlashCommand::Export
+                | SlashCommand::PasteImage
+                | SlashCommand::Export
                 | SlashCommand::Raw
                 | SlashCommand::Diff
                 | SlashCommand::Mention
@@ -202,6 +218,7 @@ impl SlashCommand {
             | SlashCommand::Fork
             | SlashCommand::Init
             | SlashCommand::Compact
+            | SlashCommand::Export
             | SlashCommand::Keymap
             | SlashCommand::Vim
             | SlashCommand::ElevateSandbox

@@ -26,7 +26,6 @@ tui-with-exec-server *args:
 # Run the CLI version of the file-search crate.
 file-search *args:
     cargo run --bin codex-file-search -- {args}
-
 # Run the standalone code-mode host from source.
 code-mode-host *args:
     cargo run --bin codex-code-mode-host -- {args}
@@ -82,7 +81,6 @@ bench *args:
 # Run benchmark targets once to ensure they start successfully.
 bench-smoke:
     just bench -- --test
-
 # Run Bazel-backed end-to-end macrobenchmarks with optimized binaries.
 bench-e2e:
     # Keep measured binaries comparable to production-style optimized builds.
@@ -104,7 +102,6 @@ bazel-codex *args:
 [windows]
 bazel-codex *args:
     bazel run //codex-rs/cli:codex --run_under='cd /d "{{ invocation_directory_native() }}" &&' -- @($args | Select-Object -Skip 1)
-
 # Build and run the standalone code-mode host from source using Bazel.
 [no-cd]
 [unix]
@@ -163,6 +160,8 @@ argument-comment-lint-from-source *args:
 [unix]
 log *args:
     if [ "${1:-}" = "--" ]; then shift; fi; cargo run -p codex-state --bin logs_client -- "$@"
+    if [ "${1:-}" = "--" ]; then shift; fi; cargo run -p codex-cli --bin logs_client -- "$@"
+     if [ "${1:-}" = "--" ]; then shift; fi; cargo run -p codex-cli --bin logs_client -- "$@"
 [windows]
 log *args:
-    $forwarded_args = @($args | Select-Object -Skip 1); if ($forwarded_args.Count -gt 0 -and $forwarded_args[0] -eq "--") { $forwarded_args = @($forwarded_args | Select-Object -Skip 1) }; cargo run -p codex-state --bin logs_client -- @forwarded_args
+    $forwarded_args = @($args | Select-Object -Skip 1); if ($forwarded_args.Count -gt 0 -and $forwarded_args[0] -eq "--") { $forwarded_args = @($forwarded_args | Select-Object -Skip 1) }; cargo run -p codex-cli --bin logs_client -- @forwarded_args
