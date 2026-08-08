@@ -115,8 +115,6 @@ async fn apply_role_to_config_inner(
         role_layer_toml,
         preserve_current_model,
         developer_instructions,
-        preserve_current_model,
-        developer_instructions,
         preserve_current_provider,
         preserve_current_service_tier,
     )
