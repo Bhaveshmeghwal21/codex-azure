@@ -414,34 +414,26 @@ impl<'a> From<&'a ResponsesApiRequest> for ResponseCreateWsRequest<'a> {
 #[derive(Debug)]
 pub struct ResponseCreateWsRequest<'a> {
     pub model: &'a str,
-    #[serde(skip_serializing_if = "str::is_empty")]
     pub instructions: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_response_id: Option<String>,
     pub input: &'a [ResponseItem],
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<&'a RawValue>,
     pub tool_choice: &'a str,
     pub parallel_tool_calls: bool,
     pub reasoning: Option<&'a Reasoning>,
     pub store: bool,
     pub stream: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub stream_options: Option<&'a StreamOptions>,
     pub include: &'a [String],
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_cache_key: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<&'a TextControls>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub generate: Option<bool>,
     pub client_metadata: Option<HashMap<String, String>>,
     pub omit_null_encrypted_content: bool,
 }
 
-impl Serialize for ResponseCreateWsRequest {
+impl Serialize for ResponseCreateWsRequest<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
