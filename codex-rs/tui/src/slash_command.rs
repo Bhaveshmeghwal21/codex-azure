@@ -48,9 +48,6 @@ pub enum SlashCommand {
     #[strum(to_string = "paste-image")]
     PasteImage,
     Export,
-    #[strum(to_string = "paste-image")]
-    PasteImage,
-    Export,
     Raw,
     Diff,
     Mention,
@@ -103,8 +100,6 @@ impl SlashCommand {
             SlashCommand::App => "continue this session in the Desktop app",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Copy => "copy last response as markdown",
-            SlashCommand::PasteImage => "attach image data from the system clipboard",
-            SlashCommand::Export => "export the conversation as markdown",
             SlashCommand::PasteImage => "attach image data from the system clipboard",
             SlashCommand::Export => "export the conversation as markdown",
             SlashCommand::Raw => "toggle raw scrollback mode for copy-friendly terminal selection",
@@ -179,8 +174,6 @@ impl SlashCommand {
                 | SlashCommand::Mcp
                 | SlashCommand::Azure
                 | SlashCommand::Export
-                | SlashCommand::Azure
-                | SlashCommand::Export
                 | SlashCommand::Raw
                 | SlashCommand::Usage
                 | SlashCommand::Pets
@@ -196,8 +189,6 @@ impl SlashCommand {
         matches!(
             self,
             SlashCommand::Copy
-                | SlashCommand::PasteImage
-                | SlashCommand::Export
                 | SlashCommand::PasteImage
                 | SlashCommand::Export
                 | SlashCommand::Raw
