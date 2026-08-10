@@ -162,8 +162,6 @@ const X_OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER: &str =
 const REALTIME_CALLS_ENDPOINT: &str = "/realtime/calls";
 const RESPONSES_ENDPOINT: &str = "/responses";
 const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
-const AZURE_ENCRYPTED_TOOL_OUTPUT_UNAVAILABLE: &str =
-    "[encrypted tool output unavailable for Azure provider]";
 // `/responses/compact` is unary, so the timeout covers the full response rather than one idle
 // period between stream events.
 const COMPACT_REQUEST_TIMEOUT_IDLE_MULTIPLIER: u32 = 4;
@@ -935,7 +933,7 @@ impl ModelClient {
         let request = ResponsesApiRequest {
             model: model_info.slug.clone(),
             instructions,
-            input: model_input_for_provider(provider, input),
+            input: azure_compat::model_input_for_provider(provider, input),
             tools,
             tool_choice: "auto".to_string(),
             parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
@@ -1166,76 +1164,6 @@ impl ModelClient {
             );
         }
         headers
-    }
-}
-
-fn model_input_for_provider(
-    provider: &codex_api::Provider,
-    input: Vec<ResponseItem>,
-) -> Vec<ResponseItem> {
-    if provider.is_azure_responses_endpoint() {
-        input
-            .into_iter()
-            .filter_map(azure_compatible_input_item)
-            .collect()
-    } else {
-        input
-    }
-}
-
-fn azure_compatible_input_item(mut item: ResponseItem) -> Option<ResponseItem> {
-    match &mut item {
-        ResponseItem::Reasoning {
-            id,
-            summary,
-            content,
-            encrypted_content,
-            internal_chat_message_metadata_passthrough: _,
-        } => {
-            *encrypted_content = None;
-            // Never drop a reasoning item that has an id, even if summary/content
-            // are empty. Azure requires the reasoning item to be present whenever
-            // its paired message item appears in the input. Dropping an empty
-            // reasoning item causes the API to reject the next resume with:
-            //   "Item 'msg_...' was provided without its required 'reasoning' item"
-            // Instead, inject a minimal placeholder summary so the item is valid.
-            if summary.is_empty() && content.as_ref().is_none_or(Vec::is_empty) {
-                if id.as_ref().is_none_or(|id| id.is_empty()) {
-                    // No id either — safe to drop, nothing to pair against.
-                    return None;
-                }
-                summary.push(ReasoningItemReasoningSummary::SummaryText {
-                    text: String::new(),
-                });
-            }
-            Some(item)
-        }
-        ResponseItem::Compaction { .. } | ResponseItem::ContextCompaction { .. } => None,
-        ResponseItem::FunctionCallOutput { output, .. }
-        | ResponseItem::CustomToolCallOutput { output, .. } => {
-            if let Some(items) = output.content_items_mut() {
-                for item in items {
-                    if matches!(item, FunctionCallOutputContentItem::EncryptedContent { .. }) {
-                        *item = FunctionCallOutputContentItem::InputText {
-                            text: AZURE_ENCRYPTED_TOOL_OUTPUT_UNAVAILABLE.to_string(),
-                        };
-                    }
-                }
-            }
-            Some(item)
-        }
-        ResponseItem::Message { .. }
-        | ResponseItem::AgentMessage { .. }
-        | ResponseItem::AdditionalTools { .. }
-        | ResponseItem::LocalShellCall { .. }
-        | ResponseItem::FunctionCall { .. }
-        | ResponseItem::ToolSearchCall { .. }
-        | ResponseItem::ToolSearchOutput { .. }
-        | ResponseItem::CustomToolCall { .. }
-        | ResponseItem::WebSearchCall { .. }
-        | ResponseItem::ImageGenerationCall { .. }
-        | ResponseItem::CompactionTrigger {}
-        | ResponseItem::Other => Some(item),
     }
 }
 
@@ -2576,6 +2504,8 @@ impl WebsocketTelemetry for ApiTelemetry {
             .record_websocket_event(result, duration);
     }
 }
+
+mod azure_compat;
 
 #[cfg(test)]
 #[path = "client_tests.rs"]
