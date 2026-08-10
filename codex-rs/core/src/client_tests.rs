@@ -289,12 +289,15 @@ fn azure_responses_request_omits_null_encrypted_content_on_wire() {
     let client = test_model_client(SessionSource::Cli);
     let prompt = crate::Prompt {
         input: vec![ResponseItem::Reasoning {
-            id: "rs_1".to_string(),
+            id: Some(codex_protocol::ResponseItemId::from_server(
+                "rs_1".to_string(),
+            )),
             summary: vec![ReasoningItemReasoningSummary::SummaryText {
                 text: "readable summary".to_string(),
             }],
             content: None,
             encrypted_content: Some("stale-reasoning".to_string()),
+            internal_chat_message_metadata_passthrough: None,
         }],
         ..Default::default()
     };

@@ -5,6 +5,7 @@ use crate::error::ApiError;
 use crate::provider::Provider;
 use codex_client::HttpTransport;
 use codex_client::RequestTelemetry;
+use codex_protocol::ResponseItemId;
 use codex_protocol::models::ResponseItem;
 use http::HeaderMap;
 use http::Method;
@@ -118,12 +119,13 @@ mod tests {
     #[test]
     fn compaction_input_can_omit_null_encrypted_content() {
         let input = vec![ResponseItem::Reasoning {
-            id: "rs_1".to_string(),
+            id: Some(ResponseItemId::from_server("rs_1".to_string())),
             summary: vec![ReasoningItemReasoningSummary::SummaryText {
                 text: "readable summary".to_string(),
             }],
             content: None,
             encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
         }];
         let payload = CompactionInput {
             model: "gpt-test",

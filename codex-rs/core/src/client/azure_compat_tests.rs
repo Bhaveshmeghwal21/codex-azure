@@ -4,6 +4,7 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ReasoningItemReasoningSummary;
+use codex_protocol::ResponseItemId;
 use codex_protocol::models::ResponseItem;
 use pretty_assertions::assert_eq;
 
@@ -34,10 +35,11 @@ fn azure_model_input_omits_replayed_encrypted_content_without_mutating_history()
         phase: None,
     };
     let reasoning = ResponseItem::Reasoning {
-        id: "rs_1".to_string(),
+        id: Some(ResponseItemId::from_server("rs_1".to_string())),
         summary: vec![],
         content: None,
         encrypted_content: Some("stale-reasoning".to_string()),
+        internal_chat_message_metadata_passthrough: None,
     };
     let compacted_summary = ResponseItem::Compaction {
         encrypted_content: "stale-compaction".to_string(),
@@ -144,12 +146,13 @@ fn azure_model_input_omits_replayed_encrypted_content_without_mutating_history()
 #[test]
 fn azure_model_input_preserves_reasoning_summary_without_encrypted_content() {
     let input = vec![ResponseItem::Reasoning {
-        id: "rs_1".to_string(),
+        id: Some(ResponseItemId::from_server("rs_1".to_string())),
         summary: vec![ReasoningItemReasoningSummary::SummaryText {
             text: "readable summary".to_string(),
         }],
         content: None,
         encrypted_content: Some("stale-reasoning".to_string()),
+        internal_chat_message_metadata_passthrough: None,
     }];
 
     let projected = model_input_for_provider(&azure_api_provider(), input);
@@ -157,12 +160,13 @@ fn azure_model_input_preserves_reasoning_summary_without_encrypted_content() {
     assert_eq!(
         projected,
         vec![ResponseItem::Reasoning {
-            id: "rs_1".to_string(),
+            id: Some(ResponseItemId::from_server("rs_1".to_string())),
             summary: vec![ReasoningItemReasoningSummary::SummaryText {
                 text: "readable summary".to_string(),
             }],
             content: None,
             encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
         }]
     );
 }
@@ -170,10 +174,11 @@ fn azure_model_input_preserves_reasoning_summary_without_encrypted_content() {
 #[test]
 fn non_azure_model_input_preserves_encrypted_content() {
     let input = vec![ResponseItem::Reasoning {
-        id: "rs_1".to_string(),
+        id: Some(ResponseItemId::from_server("rs_1".to_string())),
         summary: vec![],
         content: None,
         encrypted_content: Some("provider-owned-state".to_string()),
+        internal_chat_message_metadata_passthrough: None,
     }];
 
     assert_eq!(
