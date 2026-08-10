@@ -214,35 +214,63 @@ mod tests {
     }
 
     #[test]
-    fn parse_worker_commands_require_task_text() {
+    fn parse_explore_command_returns_explore_kind() {
         assert_eq!(
             parse_agent_worker_command("explore map the TUI"),
             Ok(AgentWorkerCommand::Spawn(AgentWorkerKind::Explore))
         );
+    }
+
+    #[test]
+    fn parse_spawn_researcher_command_returns_research_kind() {
         assert_eq!(
             parse_agent_worker_command("spawn researcher current RAG papers"),
             Ok(AgentWorkerCommand::Spawn(AgentWorkerKind::Research))
         );
+    }
+
+    #[test]
+    fn parse_spawn_researcher_without_topic_is_usage_error() {
         assert_eq!(
             parse_agent_worker_command("spawn researcher"),
             Err(AGENT_USAGE)
         );
+    }
+
+    #[test]
+    fn parse_review_command_returns_review_kind() {
         assert_eq!(
             parse_agent_worker_command("review current diff"),
             Ok(AgentWorkerCommand::Spawn(AgentWorkerKind::Review))
         );
+    }
+
+    #[test]
+    fn parse_test_command_returns_test_kind() {
         assert_eq!(
             parse_agent_worker_command("test failing codex-tui tests"),
             Ok(AgentWorkerCommand::Spawn(AgentWorkerKind::Test))
         );
+    }
+
+    #[test]
+    fn parse_implement_command_returns_implement_kind() {
         assert_eq!(
             parse_agent_worker_command("implement /agent workers"),
             Ok(AgentWorkerCommand::Spawn(AgentWorkerKind::Implement))
         );
+    }
+
+    #[test]
+    fn parse_auto_command_returns_auto_kind() {
         assert_eq!(
             parse_agent_worker_command("auto fix the failing parser test"),
             Ok(AgentWorkerCommand::Spawn(AgentWorkerKind::Auto))
         );
+    }
+
+    #[test]
+    fn parse_explore_without_task_text_is_usage_error() {
         assert_eq!(parse_agent_worker_command("explore"), Err(AGENT_USAGE));
     }
 
