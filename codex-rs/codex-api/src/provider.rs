@@ -85,8 +85,12 @@ impl Provider {
         }
     }
 
+    pub fn dialect(&self) -> ProviderDialect {
+        ProviderDialect::detect(&self.name, Some(&self.base_url))
+    }
+
     pub fn is_azure_responses_endpoint(&self) -> bool {
-        is_azure_responses_provider(&self.name, Some(&self.base_url))
+        self.dialect() == ProviderDialect::Azure
     }
 
     pub fn websocket_url_for_path(&self, path: &str) -> Result<Url, url::ParseError> {
@@ -100,6 +104,25 @@ impl Provider {
         };
         let _ = url.set_scheme(scheme);
         Ok(url)
+    }
+}
+
+/// Which API dialect a provider's HTTP endpoint speaks. Resolved once, at
+/// provider-construction time, instead of re-derived from raw name/base_url
+/// strings independently at each call site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderDialect {
+    OpenAi,
+    Azure,
+}
+
+impl ProviderDialect {
+    pub fn detect(name: &str, base_url: Option<&str>) -> Self {
+        if is_azure_responses_provider(name, base_url) {
+            Self::Azure
+        } else {
+            Self::OpenAi
+        }
     }
 }
 
@@ -165,5 +188,21 @@ mod tests {
                 "expected {base_url} not to be detected as Azure"
             );
         }
+    }
+
+    #[test]
+    fn provider_dialect_detects_azure_by_name_or_url() {
+        assert_eq!(
+            ProviderDialect::detect("Azure", Some("https://example.com")),
+            ProviderDialect::Azure
+        );
+        assert_eq!(
+            ProviderDialect::detect("test", Some("https://foo.openai.azure.com/openai")),
+            ProviderDialect::Azure
+        );
+        assert_eq!(
+            ProviderDialect::detect("OpenAI", Some("https://api.openai.com/v1")),
+            ProviderDialect::OpenAi
+        );
     }
 }

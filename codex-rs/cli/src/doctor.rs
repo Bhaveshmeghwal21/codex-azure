@@ -29,8 +29,8 @@ use std::time::Instant;
 use anyhow::Context;
 use clap::Parser;
 use codex_api::ApiError;
+use codex_api::ProviderDialect;
 use codex_api::ResponsesWebsocketClient;
-use codex_api::is_azure_responses_provider;
 use codex_arg0::Arg0DispatchPaths;
 use codex_config::types::McpServerConfig;
 use codex_config::types::McpServerTransportConfig;
@@ -2689,7 +2689,8 @@ fn provider_reachability_plan_from_parts(
 }
 
 fn should_probe_models_route(provider_name: &str, base_url: &str, is_amazon_bedrock: bool) -> bool {
-    !is_amazon_bedrock && !is_azure_responses_provider(provider_name, Some(base_url))
+    !is_amazon_bedrock
+        && ProviderDialect::detect(provider_name, Some(base_url)) != ProviderDialect::Azure
 }
 
 fn provider_url_for_path(
