@@ -148,6 +148,7 @@ mod tests {
                 "model": "gpt-test",
                 "input": [{
                     "type": "reasoning",
+                    "id": "rs_1",
                     "summary": [{
                         "type": "summary_text",
                         "text": "readable summary"
