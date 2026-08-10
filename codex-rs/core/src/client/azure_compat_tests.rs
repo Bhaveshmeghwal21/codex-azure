@@ -1,10 +1,10 @@
 use super::model_input_for_provider;
 use codex_model_provider_info::ModelProviderInfo;
+use codex_protocol::ResponseItemId;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ReasoningItemReasoningSummary;
-use codex_protocol::ResponseItemId;
 use codex_protocol::models::ResponseItem;
 use pretty_assertions::assert_eq;
 
