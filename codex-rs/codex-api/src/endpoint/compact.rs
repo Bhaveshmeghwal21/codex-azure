@@ -5,7 +5,6 @@ use crate::error::ApiError;
 use crate::provider::Provider;
 use codex_client::HttpTransport;
 use codex_client::RequestTelemetry;
-use codex_protocol::ResponseItemId;
 use codex_protocol::models::ResponseItem;
 use http::HeaderMap;
 use http::Method;
@@ -95,6 +94,7 @@ mod tests {
     use codex_client::Response;
     use codex_client::StreamResponse;
     use codex_client::TransportError;
+    use codex_protocol::ResponseItemId;
     use codex_protocol::models::ReasoningItemReasoningSummary;
     use serde_json::json;
 

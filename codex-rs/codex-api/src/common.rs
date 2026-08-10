@@ -477,7 +477,7 @@ impl Serialize for ResponseCreateWsRequest<'_> {
         }
         state.serialize_field(
             "input",
-            &serialize_input_items(&self.input, self.omit_null_encrypted_content)
+            &serialize_input_items(self.input, self.omit_null_encrypted_content)
                 .map_err(serde::ser::Error::custom)?,
         )?;
         if let Some(tools) = &self.tools {
