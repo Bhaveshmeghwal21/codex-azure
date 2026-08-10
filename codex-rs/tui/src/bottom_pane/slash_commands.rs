@@ -304,6 +304,8 @@ mod tests {
             vec![
                 SlashCommand::Ide,
                 SlashCommand::Copy,
+                // This fork adds PasteImage to available_in_side_conversation().
+                SlashCommand::PasteImage,
                 SlashCommand::Export,
                 SlashCommand::Raw,
                 SlashCommand::Diff,
