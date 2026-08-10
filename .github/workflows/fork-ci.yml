@@ -29,6 +29,12 @@ env:
   CARGO_TERM_COLOR: never
   CARGO_INCREMENTAL: "0"
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  RUST_BACKTRACE: "1"
+  # This codebase's tests need more than the 2 MiB default test-thread stack;
+  # without this, codex-tui aborts with a stack overflow in
+  # app::tests::advanced_reasoning_tests. Same value rust-ci-full-nextest
+  # -platform.yml sets for the upstream test jobs.
+  RUST_MIN_STACK: "8388608" # 8 MiB
 
 jobs:
   lint-test:
