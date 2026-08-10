@@ -994,9 +994,9 @@ impl ChatWidget {
                         success_message: request.success_message,
                     });
                 }
-                Err(err) => self.add_error_message(err),
+                Err(err) => self.add_error_message(err.to_string()),
             },
-            Err(err) => self.add_error_message(err),
+            Err(err) => self.add_error_message(err.to_string()),
         }
     }
 

@@ -7,6 +7,28 @@ use crate::legacy_core::config::Config;
 
 pub(crate) const AZURE_USAGE: &str = "Usage: /azure list | /azure add <id> --base-url <url> --api-version <version> --key <key> [--model <deployment>] [--context-window <tokens>] [--use] | /azure use <id> [--model <deployment>] | /azure remove <id>";
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum AzureCommandError {
+    #[error("{AZURE_USAGE}")]
+    Usage,
+    #[error("Missing --base-url")]
+    MissingBaseUrl,
+    #[error("Missing --api-version")]
+    MissingApiVersion,
+    #[error("Missing --key")]
+    MissingKey,
+    #[error("--context-window must be an integer")]
+    InvalidContextWindow,
+    #[error("Provider id may contain only letters, numbers, `_`, and `-`.")]
+    InvalidProviderId,
+    #[error("Missing value for {0}")]
+    MissingFlagValue(String),
+    #[error("Unterminated quote in /azure command.")]
+    UnterminatedQuote,
+    #[error("Provider `{0}` is active. Run `/azure use <other-id>` before removing it.")]
+    ProviderActive(String),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AzureCommand {
     List,
@@ -37,26 +59,26 @@ pub(crate) struct AzureWriteRequest {
     pub(crate) success_message: String,
 }
 
-pub(crate) fn parse_azure_command(input: &str) -> Result<AzureCommand, String> {
+pub(crate) fn parse_azure_command(input: &str) -> Result<AzureCommand, AzureCommandError> {
     let tokens = split_args(input)?;
     let Some((verb, rest)) = tokens.split_first() else {
-        return Err(AZURE_USAGE.to_string());
+        return Err(AzureCommandError::Usage);
     };
     match verb.as_str() {
         "list" => Ok(AzureCommand::List),
         "add" => parse_add(rest),
         "use" => parse_use(rest),
         "remove" | "rm" => parse_remove(rest),
-        _ => Err(AZURE_USAGE.to_string()),
+        _ => Err(AzureCommandError::Usage),
     }
 }
 
 pub(crate) fn build_write_request(
     command: AzureCommand,
     config: &Config,
-) -> Result<AzureWriteRequest, String> {
+) -> Result<AzureWriteRequest, AzureCommandError> {
     match command {
-        AzureCommand::List => Err(AZURE_USAGE.to_string()),
+        AzureCommand::List => Err(AzureCommandError::Usage),
         AzureCommand::Add(args) => Ok(build_add_request(args)),
         AzureCommand::Use(args) => Ok(build_use_request(args, config)),
         AzureCommand::Remove { id } => build_remove_request(id, config),
@@ -91,9 +113,9 @@ pub(crate) fn list_providers(config: &Config) -> String {
     }
 }
 
-fn parse_add(tokens: &[String]) -> Result<AzureCommand, String> {
+fn parse_add(tokens: &[String]) -> Result<AzureCommand, AzureCommandError> {
     let Some((id, rest)) = tokens.split_first() else {
-        return Err(AZURE_USAGE.to_string());
+        return Err(AzureCommandError::Usage);
     };
     validate_provider_id(id)?;
     let mut base_url = None;
@@ -122,7 +144,7 @@ fn parse_add(tokens: &[String]) -> Result<AzureCommand, String> {
                 context_window = Some(
                     value
                         .parse::<i64>()
-                        .map_err(|_| "--context-window must be an integer".to_string())?,
+                        .map_err(|_| AzureCommandError::InvalidContextWindow)?,
                 );
             }
             "--no-context-window" => {
@@ -133,23 +155,23 @@ fn parse_add(tokens: &[String]) -> Result<AzureCommand, String> {
                 use_provider = true;
                 idx += 1;
             }
-            _ => return Err(AZURE_USAGE.to_string()),
+            _ => return Err(AzureCommandError::Usage),
         }
     }
     Ok(AzureCommand::Add(AzureAddArgs {
         id: id.to_string(),
-        base_url: base_url.ok_or_else(|| "Missing --base-url".to_string())?,
-        api_version: api_version.ok_or_else(|| "Missing --api-version".to_string())?,
-        key: key.ok_or_else(|| "Missing --key".to_string())?,
+        base_url: base_url.ok_or(AzureCommandError::MissingBaseUrl)?,
+        api_version: api_version.ok_or(AzureCommandError::MissingApiVersion)?,
+        key: key.ok_or(AzureCommandError::MissingKey)?,
         model,
         context_window,
         use_provider,
     }))
 }
 
-fn parse_use(tokens: &[String]) -> Result<AzureCommand, String> {
+fn parse_use(tokens: &[String]) -> Result<AzureCommand, AzureCommandError> {
     let Some((id, rest)) = tokens.split_first() else {
-        return Err(AZURE_USAGE.to_string());
+        return Err(AzureCommandError::Usage);
     };
     validate_provider_id(id)?;
     let mut model = None;
@@ -159,7 +181,7 @@ fn parse_use(tokens: &[String]) -> Result<AzureCommand, String> {
             "--model" => {
                 model = Some(require_value(rest, &mut idx, "--model")?);
             }
-            _ => return Err(AZURE_USAGE.to_string()),
+            _ => return Err(AzureCommandError::Usage),
         }
     }
     Ok(AzureCommand::Use(AzureUseArgs {
@@ -168,13 +190,13 @@ fn parse_use(tokens: &[String]) -> Result<AzureCommand, String> {
     }))
 }
 
-fn parse_remove(tokens: &[String]) -> Result<AzureCommand, String> {
+fn parse_remove(tokens: &[String]) -> Result<AzureCommand, AzureCommandError> {
     match tokens {
         [id] => {
             validate_provider_id(id)?;
             Ok(AzureCommand::Remove { id: id.to_string() })
         }
-        _ => Err(AZURE_USAGE.to_string()),
+        _ => Err(AzureCommandError::Usage),
     }
 }
 
@@ -234,11 +256,12 @@ fn build_use_request(args: AzureUseArgs, config: &Config) -> AzureWriteRequest {
     }
 }
 
-fn build_remove_request(id: String, config: &Config) -> Result<AzureWriteRequest, String> {
+fn build_remove_request(
+    id: String,
+    config: &Config,
+) -> Result<AzureWriteRequest, AzureCommandError> {
     if id == config.model_provider_id {
-        return Err(format!(
-            "Provider `{id}` is active. Run `/azure use <other-id>` before removing it."
-        ));
+        return Err(AzureCommandError::ProviderActive(id));
     }
     Ok(AzureWriteRequest {
         edits: vec![clear_config_value(format!("model_providers.{id}"))],
@@ -246,30 +269,34 @@ fn build_remove_request(id: String, config: &Config) -> Result<AzureWriteRequest
     })
 }
 
-fn require_value(tokens: &[String], idx: &mut usize, flag: &str) -> Result<String, String> {
+fn require_value(
+    tokens: &[String],
+    idx: &mut usize,
+    flag: &str,
+) -> Result<String, AzureCommandError> {
     let value_index = *idx + 1;
     let Some(value) = tokens.get(value_index) else {
-        return Err(format!("Missing value for {flag}"));
+        return Err(AzureCommandError::MissingFlagValue(flag.to_string()));
     };
     if value.starts_with("--") {
-        return Err(format!("Missing value for {flag}"));
+        return Err(AzureCommandError::MissingFlagValue(flag.to_string()));
     }
     *idx += 2;
     Ok(value.clone())
 }
 
-fn validate_provider_id(id: &str) -> Result<(), String> {
+fn validate_provider_id(id: &str) -> Result<(), AzureCommandError> {
     if id.is_empty()
         || !id
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
     {
-        return Err("Provider id may contain only letters, numbers, `_`, and `-`.".to_string());
+        return Err(AzureCommandError::InvalidProviderId);
     }
     Ok(())
 }
 
-fn split_args(input: &str) -> Result<Vec<String>, String> {
+fn split_args(input: &str) -> Result<Vec<String>, AzureCommandError> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut chars = input.chars();
@@ -299,7 +326,7 @@ fn split_args(input: &str) -> Result<Vec<String>, String> {
         }
     }
     if quote.is_some() {
-        return Err("Unterminated quote in /azure command.".to_string());
+        return Err(AzureCommandError::UnterminatedQuote);
     }
     if !current.is_empty() {
         args.push(current);
@@ -361,6 +388,40 @@ mod tests {
                 "model_provider",
                 "model",
             ]
+        );
+    }
+
+    #[test]
+    fn azure_command_error_messages_match_previous_string_errors() {
+        assert_eq!(AzureCommandError::Usage.to_string(), AZURE_USAGE);
+        assert_eq!(
+            AzureCommandError::MissingBaseUrl.to_string(),
+            "Missing --base-url"
+        );
+        assert_eq!(
+            AzureCommandError::MissingApiVersion.to_string(),
+            "Missing --api-version"
+        );
+        assert_eq!(AzureCommandError::MissingKey.to_string(), "Missing --key");
+        assert_eq!(
+            AzureCommandError::InvalidContextWindow.to_string(),
+            "--context-window must be an integer"
+        );
+        assert_eq!(
+            AzureCommandError::InvalidProviderId.to_string(),
+            "Provider id may contain only letters, numbers, `_`, and `-`."
+        );
+        assert_eq!(
+            AzureCommandError::MissingFlagValue("--model".to_string()).to_string(),
+            "Missing value for --model"
+        );
+        assert_eq!(
+            AzureCommandError::UnterminatedQuote.to_string(),
+            "Unterminated quote in /azure command."
+        );
+        assert_eq!(
+            AzureCommandError::ProviderActive("prod".to_string()).to_string(),
+            "Provider `prod` is active. Run `/azure use <other-id>` before removing it."
         );
     }
 }
