@@ -95,18 +95,25 @@ jobs:
             -p codex-tui \
             -p codex-app-server
 
+      # nextest is this repo's canonical runner (`just test` uses it). It runs
+      # each test in its own process, which matters here: several tests assert
+      # on process-global state (e.g. whether a `tracing` event is enabled) and
+      # fail spuriously under `cargo test`, where all tests share one process.
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
       # --lib scopes to each crate's in-crate unit tests. That still compiles
       # all #[cfg(test)] code in src/ (the blind spot `cargo build` skips, and
       # where the stale fixtures were hiding), while excluding the pre-existing
       # broken integration suites under tests/.
-      - name: cargo test (unit tests)
+      - name: cargo nextest (unit tests)
         working-directory: codex-rs
         run: |
-          cargo test --lib \
+          cargo nextest run --lib --no-fail-fast \
             -p codex-api \
             -p codex-model-provider \
             -p codex-tui
 
-      - name: cargo test (codex-core unit tests)
+      - name: cargo nextest (codex-core unit tests)
         working-directory: codex-rs
-        run: cargo test -p codex-core --lib
+        run: cargo nextest run --lib --no-fail-fast -p codex-core
