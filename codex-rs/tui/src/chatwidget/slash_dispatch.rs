@@ -410,9 +410,6 @@ impl ChatWidget {
             SlashCommand::PasteImage => {
                 self.paste_clipboard_image();
             }
-            SlashCommand::PasteImage => {
-                self.paste_clipboard_image();
-            }
             SlashCommand::Export => {
                 self.show_transcript_export_popup();
             }

@@ -8,6 +8,8 @@ use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
 use pretty_assertions::assert_eq;
 
+const AZURE_PLACEHOLDER: &str = "[encrypted tool output unavailable for Azure provider]";
+
 fn azure_api_provider() -> codex_api::Provider {
     ModelProviderInfo {
         name: "Azure".to_string(),
@@ -24,16 +26,75 @@ fn openai_api_provider() -> codex_api::Provider {
         .expect("openai test provider should convert to api provider")
 }
 
-#[test]
-fn azure_model_input_omits_replayed_encrypted_content_without_mutating_history() {
-    let user = ResponseItem::Message {
+fn user_message() -> ResponseItem {
+    ResponseItem::Message {
         id: None,
         role: "user".to_string(),
         content: vec![ContentItem::InputText {
             text: "hello".to_string(),
         }],
         phase: None,
-    };
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+fn function_call() -> ResponseItem {
+    ResponseItem::FunctionCall {
+        id: None,
+        name: "web.run".to_string(),
+        namespace: None,
+        arguments: "{}".to_string(),
+        encrypted_function_args: None,
+        call_id: "call_1".to_string(),
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+fn custom_tool_call() -> ResponseItem {
+    ResponseItem::CustomToolCall {
+        id: None,
+        status: None,
+        call_id: "custom_call_1".to_string(),
+        name: "custom-tool".to_string(),
+        namespace: None,
+        input: "{}".to_string(),
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+fn function_call_output(content: FunctionCallOutputContentItem) -> ResponseItem {
+    ResponseItem::FunctionCallOutput {
+        id: None,
+        call_id: "call_1".to_string(),
+        output: FunctionCallOutputPayload::from_content_items(vec![content]),
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+fn custom_tool_call_output(content: FunctionCallOutputContentItem) -> ResponseItem {
+    ResponseItem::CustomToolCallOutput {
+        id: None,
+        call_id: "custom_call_1".to_string(),
+        name: Some("custom-tool".to_string()),
+        output: FunctionCallOutputPayload::from_content_items(vec![content]),
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+fn encrypted(content: &str) -> FunctionCallOutputContentItem {
+    FunctionCallOutputContentItem::EncryptedContent {
+        encrypted_content: content.to_string(),
+    }
+}
+
+fn placeholder_text() -> FunctionCallOutputContentItem {
+    FunctionCallOutputContentItem::InputText {
+        text: AZURE_PLACEHOLDER.to_string(),
+    }
+}
+
+#[test]
+fn azure_model_input_omits_replayed_encrypted_content_without_mutating_history() {
     let reasoning = ResponseItem::Reasoning {
         id: Some(ResponseItemId::from_server("rs_1".to_string())),
         summary: vec![],
@@ -42,105 +103,46 @@ fn azure_model_input_omits_replayed_encrypted_content_without_mutating_history()
         internal_chat_message_metadata_passthrough: None,
     };
     let compacted_summary = ResponseItem::Compaction {
+        id: None,
         encrypted_content: "stale-compaction".to_string(),
-    };
-    let function_call = ResponseItem::FunctionCall {
-        id: None,
-        name: "web.run".to_string(),
-        namespace: None,
-        arguments: "{}".to_string(),
-        call_id: "call_1".to_string(),
-    };
-    let encrypted_output = ResponseItem::FunctionCallOutput {
-        call_id: "call_1".to_string(),
-        output: FunctionCallOutputPayload::from_content_items(vec![
-            FunctionCallOutputContentItem::EncryptedContent {
-                encrypted_content: "stale-tool-output".to_string(),
-            },
-        ]),
-    };
-    let custom_tool_call = ResponseItem::CustomToolCall {
-        id: None,
-        status: None,
-        call_id: "custom_call_1".to_string(),
-        name: "custom-tool".to_string(),
-        input: "{}".to_string(),
-    };
-    let encrypted_custom_output = ResponseItem::CustomToolCallOutput {
-        call_id: "custom_call_1".to_string(),
-        name: Some("custom-tool".to_string()),
-        output: FunctionCallOutputPayload::from_content_items(vec![
-            FunctionCallOutputContentItem::EncryptedContent {
-                encrypted_content: "stale-custom-output".to_string(),
-            },
-        ]),
+        internal_chat_message_metadata_passthrough: None,
     };
     let input = vec![
-        user.clone(),
-        reasoning.clone(),
+        user_message(),
+        reasoning,
         compacted_summary,
-        function_call.clone(),
-        encrypted_output,
-        custom_tool_call.clone(),
-        encrypted_custom_output,
+        function_call(),
+        function_call_output(encrypted("stale-tool-output")),
+        custom_tool_call(),
+        custom_tool_call_output(encrypted("stale-custom-output")),
     ];
+    let original = input.clone();
 
     let projected = model_input_for_provider(&azure_api_provider(), input.clone());
 
+    // Reasoning keeps its id but loses encrypted_content (and gains a stub
+    // summary); compaction items are dropped; encrypted tool output is
+    // replaced with a readable placeholder.
     assert_eq!(
         projected,
         vec![
-            user.clone(),
-            function_call.clone(),
-            ResponseItem::FunctionCallOutput {
-                call_id: "call_1".to_string(),
-                output: FunctionCallOutputPayload::from_content_items(vec![
-                    FunctionCallOutputContentItem::InputText {
-                        text: "[encrypted tool output unavailable for Azure provider]".to_string(),
-                    },
-                ]),
+            user_message(),
+            ResponseItem::Reasoning {
+                id: Some(ResponseItemId::from_server("rs_1".to_string())),
+                summary: vec![ReasoningItemReasoningSummary::SummaryText {
+                    text: String::new(),
+                }],
+                content: None,
+                encrypted_content: None,
+                internal_chat_message_metadata_passthrough: None,
             },
-            custom_tool_call.clone(),
-            ResponseItem::CustomToolCallOutput {
-                call_id: "custom_call_1".to_string(),
-                name: Some("custom-tool".to_string()),
-                output: FunctionCallOutputPayload::from_content_items(vec![
-                    FunctionCallOutputContentItem::InputText {
-                        text: "[encrypted tool output unavailable for Azure provider]".to_string(),
-                    },
-                ]),
-            },
+            function_call(),
+            function_call_output(placeholder_text()),
+            custom_tool_call(),
+            custom_tool_call_output(placeholder_text()),
         ]
     );
-    assert_eq!(
-        input,
-        vec![
-            user,
-            reasoning,
-            ResponseItem::Compaction {
-                encrypted_content: "stale-compaction".to_string(),
-            },
-            function_call,
-            ResponseItem::FunctionCallOutput {
-                call_id: "call_1".to_string(),
-                output: FunctionCallOutputPayload::from_content_items(vec![
-                    FunctionCallOutputContentItem::EncryptedContent {
-                        encrypted_content: "stale-tool-output".to_string(),
-                    },
-                ]),
-            },
-            custom_tool_call,
-            ResponseItem::CustomToolCallOutput {
-                call_id: "custom_call_1".to_string(),
-                name: Some("custom-tool".to_string()),
-                output: FunctionCallOutputPayload::from_content_items(vec![
-                    FunctionCallOutputContentItem::EncryptedContent {
-                        encrypted_content: "stale-custom-output".to_string(),
-                    },
-                ]),
-            },
-        ]
-    );
+    assert_eq!(input, original, "caller history must not be mutated");
 }
 
 #[test]
