@@ -1,0 +1,100 @@
+name: fork-ci
+
+# Lint + test workflow that runs on GitHub-hosted runners.
+#
+# The inherited `rust-ci-full.yml` requests a self-hosted runner group named
+# `${{ github.event.repository.name }}-runners`, which only exists in the
+# upstream openai/codex organization. On a fork every one of those jobs is
+# rejected by the scheduler before a single step runs ("Required runner group
+# '<repo>-runners' not found"), so clippy and the test suite never execute.
+#
+# This workflow uses standard GitHub-hosted runners so forks get real
+# lint/test signal. It scopes work to the crates this fork actually modifies
+# to stay inside a sane time budget.
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  lint-test:
+    name: Lint + test (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Install Linux build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            cmake \
+            libcap-dev \
+            libsqlite3-dev \
+            libssl-dev \
+            perl \
+            pkg-config
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            codex-rs/target
+          key: fork-ci-${{ runner.os }}-cargo-${{ hashFiles('codex-rs/Cargo.lock') }}
+          restore-keys: |
+            fork-ci-${{ runner.os }}-cargo-
+
+      # --tests type-checks test code too, so stale test fixtures surface here
+      # rather than silently passing because `cargo build` skips #[cfg(test)].
+      - name: cargo clippy (crates changed by this fork)
+        working-directory: codex-rs
+        run: |
+          cargo clippy --tests \
+            -p codex-api \
+            -p codex-model-provider \
+            -p codex-core \
+            -p codex-tui \
+            -p codex-app-server \
+            -p codex-cli \
+            -- -D warnings
+
+      - name: cargo test (fast crates)
+        working-directory: codex-rs
+        run: |
+          cargo test \
+            -p codex-api \
+            -p codex-model-provider \
+            -p codex-tui
+
+      # --lib only: runs codex-core's in-crate unit tests (including
+      # client/azure_compat_tests.rs) without the heavy network-mocked
+      # integration suite under core/tests/.
+      - name: cargo test (codex-core unit tests)
+        working-directory: codex-rs
+        run: cargo test -p codex-core --lib
