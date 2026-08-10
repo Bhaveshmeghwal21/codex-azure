@@ -21,7 +21,6 @@ use crate::store::PluginStore;
 use crate::store::plugin_version_for_source;
 use crate::store::plugin_version_for_source_with_fallback_manifest;
 use codex_config::ConfigLayerStack;
-use codex_config::HooksFile;
 use codex_config::SkillConfigRules;
 use codex_config::hooks_file_from_json_str;
 use codex_config::skill_config_rules_from_stack;
