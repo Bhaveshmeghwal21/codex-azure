@@ -131,7 +131,7 @@ mod tests {
             model: "gpt-test",
             input: &input,
             instructions: "",
-            tools: Vec::new(),
+            tools: None,
             parallel_tool_calls: false,
             reasoning: None,
             service_tier: None,
@@ -153,7 +153,6 @@ mod tests {
                         "text": "readable summary"
                     }]
                 }],
-                "tools": [],
                 "parallel_tool_calls": false
             })
         );
