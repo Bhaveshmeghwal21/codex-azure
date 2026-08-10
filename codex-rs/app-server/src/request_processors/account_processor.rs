@@ -482,6 +482,15 @@ impl AccountRequestProcessor {
         }
     }
 
+    /// Config path segments for a field under the `azure` model provider.
+    fn azure_provider_path(field: &str) -> Vec<String> {
+        vec![
+            "model_providers".to_string(),
+            "azure".to_string(),
+            field.to_string(),
+        ]
+    }
+
     async fn login_azure_common(
         &self,
         api_key: String,
@@ -532,42 +541,27 @@ impl AccountRequestProcessor {
             },
             // Name must equal "azure" (case-insensitive) for the Azure header logic.
             ConfigEdit::SetPath {
-                segments: vec![
-                    "model_providers".to_string(),
-                    "azure".to_string(),
-                    "name".to_string(),
-                ],
+                segments: Self::azure_provider_path("name"),
                 value: toml_edit::value("azure"),
             },
             // Azure resource endpoint, e.g. https://my-resource.openai.azure.com
             ConfigEdit::SetPath {
-                segments: vec![
-                    "model_providers".to_string(),
-                    "azure".to_string(),
-                    "base_url".to_string(),
-                ],
+                segments: Self::azure_provider_path("base_url"),
                 value: toml_edit::value(endpoint),
             },
             // Embed the API key directly – no env-var lookup needed at request time.
             ConfigEdit::SetPath {
-                segments: vec![
-                    "model_providers".to_string(),
-                    "azure".to_string(),
-                    "experimental_bearer_token".to_string(),
-                ],
+                segments: Self::azure_provider_path("experimental_bearer_token"),
                 value: toml_edit::value(api_key),
             },
         ];
 
         // Only persist the api-version when the user provided a non-empty value.
         if let Some(version) = api_version.filter(|v| !v.trim().is_empty()) {
+            let mut segments = Self::azure_provider_path("query_params");
+            segments.push("api-version".to_string());
             edits.push(ConfigEdit::SetPath {
-                segments: vec![
-                    "model_providers".to_string(),
-                    "azure".to_string(),
-                    "query_params".to_string(),
-                    "api-version".to_string(),
-                ],
+                segments,
                 value: toml_edit::value(version),
             });
         }
