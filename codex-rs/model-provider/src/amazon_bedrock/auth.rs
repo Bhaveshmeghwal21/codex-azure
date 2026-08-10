@@ -15,6 +15,7 @@ use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result;
 use http::HeaderMap;
 
+use crate::AuthHeaderStyle;
 use crate::BearerAuthProvider;
 
 use super::mantle::aws_auth_config;
@@ -63,7 +64,7 @@ pub(super) async fn resolve_provider_auth(
             token: Some(token),
             account_id: None,
             is_fedramp_account: false,
-            is_azure: false,
+            auth_style: AuthHeaderStyle::Bearer,
         })),
         BedrockAuthMethod::AwsSdkAuth { context } => {
             Ok(Arc::new(BedrockMantleSigV4AuthProvider::new(context)))
@@ -196,7 +197,7 @@ mod tests {
             token: Some(token),
             account_id: None,
             is_fedramp_account: false,
-            is_azure: false,
+            auth_style: AuthHeaderStyle::Bearer,
         };
         let mut headers = http::HeaderMap::new();
 

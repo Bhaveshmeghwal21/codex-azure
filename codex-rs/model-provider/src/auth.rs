@@ -19,8 +19,9 @@ use codex_protocol::protocol::SessionSource;
 use http::HeaderMap;
 use http::HeaderValue;
 
-use codex_api::is_azure_responses_provider;
+use codex_api::ProviderDialect;
 
+use crate::bearer_auth_provider::AuthHeaderStyle;
 use crate::bearer_auth_provider::BearerAuthProvider;
 
 const BEDROCK_API_KEY_UNSUPPORTED_MESSAGE: &str =
@@ -269,13 +270,16 @@ fn should_bootstrap_chatgpt_agent_identity(
 fn bearer_auth_for_provider(
     provider: &ModelProviderInfo,
 ) -> codex_protocol::error::Result<Option<BearerAuthProvider>> {
-    let is_azure = is_azure_responses_provider(&provider.name, provider.base_url.as_deref());
+    let auth_style = match ProviderDialect::detect(&provider.name, provider.base_url.as_deref()) {
+        ProviderDialect::Azure => AuthHeaderStyle::AzureApiKey,
+        ProviderDialect::OpenAi => AuthHeaderStyle::Bearer,
+    };
     if let Some(api_key) = provider.api_key()? {
         return Ok(Some(BearerAuthProvider {
             token: Some(api_key),
             account_id: None,
             is_fedramp_account: false,
-            is_azure,
+            auth_style,
         }));
     }
 
@@ -284,7 +288,7 @@ fn bearer_auth_for_provider(
             token: Some(token),
             account_id: None,
             is_fedramp_account: false,
-            is_azure,
+            auth_style,
         }));
     }
 
@@ -306,7 +310,7 @@ pub fn auth_provider_from_auth(auth: &CodexAuth) -> SharedAuthProvider {
             token: auth.get_token().ok(),
             account_id: auth.get_account_id(),
             is_fedramp_account: auth.is_fedramp_account(),
-            is_azure: false,
+            auth_style: AuthHeaderStyle::Bearer,
         }),
     }
 }

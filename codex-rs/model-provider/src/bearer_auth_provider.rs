@@ -2,13 +2,21 @@ use codex_api::AuthProvider;
 use http::HeaderMap;
 use http::HeaderValue;
 
+/// Which auth header shape a provider expects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AuthHeaderStyle {
+    #[default]
+    Bearer,
+    AzureApiKey,
+}
+
 /// Bearer-token auth provider for OpenAI-compatible model-provider requests.
 #[derive(Clone, Default)]
 pub struct BearerAuthProvider {
     pub token: Option<String>,
     pub account_id: Option<String>,
     pub is_fedramp_account: bool,
-    pub is_azure: bool,
+    pub auth_style: AuthHeaderStyle,
 }
 
 impl BearerAuthProvider {
@@ -17,7 +25,7 @@ impl BearerAuthProvider {
             token: Some(token),
             account_id: None,
             is_fedramp_account: false,
-            is_azure: false,
+            auth_style: AuthHeaderStyle::Bearer,
         }
     }
 
@@ -26,7 +34,7 @@ impl BearerAuthProvider {
             token: token.map(str::to_string),
             account_id: account_id.map(str::to_string),
             is_fedramp_account: false,
-            is_azure: false,
+            auth_style: AuthHeaderStyle::Bearer,
         }
     }
 }
@@ -34,12 +42,17 @@ impl BearerAuthProvider {
 impl AuthProvider for BearerAuthProvider {
     fn add_auth_headers(&self, headers: &mut HeaderMap) {
         if let Some(token) = self.token.as_ref() {
-            if self.is_azure {
-                if let Ok(header) = HeaderValue::from_str(token) {
-                    let _ = headers.insert("api-key", header);
+            match self.auth_style {
+                AuthHeaderStyle::AzureApiKey => {
+                    if let Ok(header) = HeaderValue::from_str(token) {
+                        let _ = headers.insert("api-key", header);
+                    }
                 }
-            } else if let Ok(header) = HeaderValue::from_str(&format!("Bearer {token}")) {
-                let _ = headers.insert(http::header::AUTHORIZATION, header);
+                AuthHeaderStyle::Bearer => {
+                    if let Ok(header) = HeaderValue::from_str(&format!("Bearer {token}")) {
+                        let _ = headers.insert(http::header::AUTHORIZATION, header);
+                    }
+                }
             }
         }
         if let Some(account_id) = self.account_id.as_ref()
@@ -64,7 +77,7 @@ mod tests {
             token: Some("access-token".to_string()),
             account_id: None,
             is_fedramp_account: false,
-            is_azure: false,
+            auth_style: AuthHeaderStyle::Bearer,
         };
 
         assert_eq!(
@@ -103,7 +116,7 @@ mod tests {
             token: Some("access-token".to_string()),
             account_id: Some("workspace-123".to_string()),
             is_fedramp_account: true,
-            is_azure: false,
+            auth_style: AuthHeaderStyle::Bearer,
         };
         let mut headers = HeaderMap::new();
 
@@ -123,7 +136,7 @@ mod tests {
             token: Some("azure-key-123".to_string()),
             account_id: None,
             is_fedramp_account: false,
-            is_azure: true,
+            auth_style: AuthHeaderStyle::AzureApiKey,
         };
         let mut headers = HeaderMap::new();
 
