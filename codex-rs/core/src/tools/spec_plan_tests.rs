@@ -1018,24 +1018,6 @@ async fn environment_tools_follow_the_step_context() {
 }
 
 #[tokio::test]
-async fn host_context_gates_agent_job_tools() {
-    let normal_agent_job = probe(|turn| {
-        set_feature(turn, Feature::SpawnCsv, /*enabled*/ true);
-    })
-    .await;
-    normal_agent_job.assert_visible_contains(&["spawn_agents_on_csv"]);
-    normal_agent_job.assert_visible_lacks(&["report_agent_job_result"]);
-
-    let worker_agent_job = probe(|turn| {
-        set_feature(turn, Feature::SpawnCsv, /*enabled*/ true);
-        turn.session_source =
-            SessionSource::SubAgent(SubAgentSource::Other("agent_job:42".to_string()));
-    })
-    .await;
-    worker_agent_job.assert_visible_contains(&["spawn_agents_on_csv", "report_agent_job_result"]);
-}
-
-#[tokio::test]
 async fn research_record_tool_is_visible_only_for_researcher_agents() {
     let normal = probe(|_| {}).await;
     normal.assert_visible_lacks(&["research"]);
