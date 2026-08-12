@@ -1,4 +1,6 @@
 use super::model_input_for_provider;
+use super::tools_json_for_provider;
+use super::tools_raw_json_for_provider;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_protocol::ResponseItemId;
 use codex_protocol::models::ContentItem;
@@ -6,7 +8,14 @@ use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
+use codex_tools::JsonSchema;
+use codex_tools::ResponsesApiNamespace;
+use codex_tools::ResponsesApiNamespaceTool;
+use codex_tools::ResponsesApiTool;
+use codex_tools::ToolSpec;
+use codex_tools::create_tools_json_for_responses_lite;
 use pretty_assertions::assert_eq;
+use serde_json::json;
 
 const AZURE_PLACEHOLDER: &str = "[encrypted tool output unavailable for Azure provider]";
 
@@ -187,4 +196,122 @@ fn non_azure_model_input_preserves_encrypted_content() {
         model_input_for_provider(&openai_api_provider(), input.clone()),
         input
     );
+}
+
+fn function_tool(name: &str, description: &str) -> ResponsesApiTool {
+    ResponsesApiTool {
+        name: name.to_string(),
+        description: description.to_string(),
+        strict: false,
+        defer_loading: None,
+        parameters: JsonSchema::default(),
+        output_schema: None,
+    }
+}
+
+#[test]
+fn azure_tools_json_replaces_the_empty_default_namespace_description() {
+    // This is the exact payload that made every responses-lite turn fail with
+    // "Invalid 'input[0].tools[0].description': empty string": the synthetic
+    // `functions` namespace is described by an empty string.
+    let tools = create_tools_json_for_responses_lite(&[ToolSpec::Function(function_tool(
+        "shell",
+        "Run a shell command.",
+    ))])
+    .expect("responses-lite tools should serialize");
+    assert_eq!(tools[0]["description"], json!(""), "precondition");
+
+    let tools = tools_json_for_provider(&azure_api_provider(), tools);
+
+    assert_eq!(
+        tools,
+        vec![json!({
+            "type": "namespace",
+            "name": "functions",
+            "description": "Tools in the functions namespace.",
+            "tools": [{
+                "type": "function",
+                "name": "shell",
+                "description": "Run a shell command.",
+                "strict": false,
+                "parameters": {},
+            }],
+        })]
+    );
+}
+
+#[test]
+fn azure_tools_json_replaces_empty_descriptions_on_nested_tools() {
+    let tools = create_tools_json_for_responses_lite(&[ToolSpec::Function(function_tool(
+        "undocumented-mcp-tool",
+        "",
+    ))])
+    .expect("responses-lite tools should serialize");
+
+    let tools = tools_json_for_provider(&azure_api_provider(), tools);
+
+    assert_eq!(
+        tools[0]["tools"][0]["description"],
+        json!("The undocumented-mcp-tool tool.")
+    );
+}
+
+#[test]
+fn non_azure_tools_json_keeps_empty_descriptions() {
+    let tools = create_tools_json_for_responses_lite(&[ToolSpec::Function(function_tool(
+        "shell",
+        "Run a shell command.",
+    ))])
+    .expect("responses-lite tools should serialize");
+
+    assert_eq!(
+        tools_json_for_provider(&openai_api_provider(), tools.clone()),
+        tools
+    );
+}
+
+#[test]
+fn azure_tools_raw_json_replaces_empty_descriptions() {
+    // The classic (non-lite) request shape sends tools at the top level, where
+    // a namespace built by `default_namespace_description` hits the same wall.
+    let tools = [ToolSpec::Namespace(ResponsesApiNamespace {
+        name: "functions".to_string(),
+        description: String::new(),
+        tools: vec![ResponsesApiNamespaceTool::Function(function_tool(
+            "shell", "",
+        ))],
+    })];
+
+    let raw = tools_raw_json_for_provider(&azure_api_provider(), &tools)
+        .expect("azure tools should serialize");
+    let parsed: serde_json::Value =
+        serde_json::from_str(raw.get()).expect("raw tools should be valid json");
+
+    assert_eq!(
+        parsed,
+        json!([{
+            "type": "namespace",
+            "name": "functions",
+            "description": "Tools in the functions namespace.",
+            "tools": [{
+                "type": "function",
+                "name": "shell",
+                "description": "The shell tool.",
+                "strict": false,
+                "parameters": {},
+            }],
+        }])
+    );
+}
+
+#[test]
+fn non_azure_tools_raw_json_keeps_empty_descriptions() {
+    let tools = [ToolSpec::Function(function_tool("shell", ""))];
+
+    let raw = tools_raw_json_for_provider(&openai_api_provider(), &tools)
+        .expect("openai tools should serialize");
+    let parsed: serde_json::Value =
+        serde_json::from_str(raw.get()).expect("raw tools should be valid json");
+
+    assert_eq!(parsed[0]["description"], json!(""));
 }

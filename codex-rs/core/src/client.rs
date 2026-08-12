@@ -90,7 +90,6 @@ use codex_rollout_trace::InferenceTraceAttempt;
 use codex_rollout_trace::InferenceTraceContext;
 use codex_tools::create_tools_json_for_responses_api;
 use codex_tools::create_tools_json_for_responses_lite;
-use codex_tools::create_tools_raw_json_for_responses_api;
 use eventsource_stream::Event;
 use eventsource_stream::EventStreamError;
 use futures::StreamExt;
@@ -878,6 +877,7 @@ impl ModelClient {
             } else {
                 create_tools_json_for_responses_api(&prompt.tools)?
             };
+            let tools = azure_compat::tools_json_for_provider(provider, tools);
             let mut prefix = vec![ResponseItem::AdditionalTools {
                 id: None,
                 role: "developer".to_string(),
@@ -899,7 +899,7 @@ impl ModelClient {
         } else {
             (
                 prompt.base_instructions.text.clone(),
-                Some(create_tools_raw_json_for_responses_api(&prompt.tools)?.into()),
+                Some(azure_compat::tools_raw_json_for_provider(provider, &prompt.tools)?.into()),
             )
         };
         let reasoning = Self::build_reasoning(model_info, effort, summary);
