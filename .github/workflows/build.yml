@@ -42,12 +42,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # `codex-code-mode-host` is not optional tooling. Models that declare
+      # `tool_mode: "code_mode_only"` (gpt-5.6-sol/terra/luna) hide every
+      # code-mode-capable tool from the model and expect it to drive them from
+      # JavaScript executed by this host process; there is no in-process
+      # runtime to fall back to, so a `codex` binary shipped on its own leaves
+      # those models with no working tools at all. The real release pipeline
+      # ships both (see rust-release.yml), and so does this one.
       - name: Build codex CLI
         working-directory: codex-rs
         shell: pwsh
         run: |
           $log = "cargo-build.log"
-          cargo build --locked --release -p codex-cli --bin codex 2>&1 | Tee-Object -FilePath $log
+          cargo build --locked --release -p codex-cli -p codex-code-mode-host --bin codex --bin codex-code-mode-host 2>&1 | Tee-Object -FilePath $log
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) {
             $tail = @(Get-Content $log -Tail 200)
@@ -73,11 +80,16 @@ jobs:
           path: codex-rs/cargo-build.log
           if-no-files-found: ignore
 
+      # Both binaries land in one artifact zip, so extracting it puts
+      # codex-code-mode-host.exe next to codex.exe -- which is exactly where
+      # `InstallContext::code_mode_host_program()` looks for it.
       - name: Upload codex.exe artifact
         uses: actions/upload-artifact@v4
         with:
           name: codex-windows-x86_64
-          path: codex-rs/target/release/codex.exe
+          path: |
+            codex-rs/target/release/codex.exe
+            codex-rs/target/release/codex-code-mode-host.exe
           if-no-files-found: error
 
   build-macos:
@@ -118,7 +130,7 @@ jobs:
           set -euo pipefail
           log="cargo-build.log"
 
-          if ! cargo build --target aarch64-apple-darwin --locked --release -p codex-cli --bin codex 2>&1 | tee "$log"; then
+          if ! cargo build --target aarch64-apple-darwin --locked --release -p codex-cli -p codex-code-mode-host --bin codex --bin codex-code-mode-host 2>&1 | tee "$log"; then
             summary="$(grep -E '(^|[[:space:]])(error|fatal error|failed|could not|not found|No such|undefined|warning|WARNING)' "$log" | grep -v 'rerun-if-env-changed' | tail -n 80 || true)"
             if [[ -z "$summary" ]]; then
               summary="$(tail -n 80 "$log")"
@@ -133,7 +145,9 @@ jobs:
           stage_dir="../dist/${ARTIFACT_NAME}"
           mkdir -p "$stage_dir"
           install -m 0755 target/aarch64-apple-darwin/release/codex "$stage_dir/codex"
-          tar -C "$stage_dir" -czf "../dist/${ARTIFACT_NAME}.tar.gz" codex
+          install -m 0755 target/aarch64-apple-darwin/release/codex-code-mode-host \
+            "$stage_dir/codex-code-mode-host"
+          tar -C "$stage_dir" -czf "../dist/${ARTIFACT_NAME}.tar.gz" codex codex-code-mode-host
           shasum -a 256 "../dist/${ARTIFACT_NAME}.tar.gz" > "../dist/${ARTIFACT_NAME}.sha256"
 
       - name: Upload cargo build log
@@ -151,6 +165,7 @@ jobs:
           name: codex-macos-arm64
           path: |
             dist/codex-macos-arm64/codex
+            dist/codex-macos-arm64/codex-code-mode-host
             dist/codex-macos-arm64.tar.gz
             dist/codex-macos-arm64.sha256
           if-no-files-found: error
@@ -304,7 +319,7 @@ jobs:
           set -euo pipefail
           log="cargo-build.log"
 
-          if ! cargo build --locked --release -p codex-cli --bin codex 2>&1 | tee "$log"; then
+          if ! cargo build --locked --release -p codex-cli -p codex-code-mode-host --bin codex --bin codex-code-mode-host 2>&1 | tee "$log"; then
             summary="$(grep -E '(^|[[:space:]])(error|fatal error|CMake Error|failed|could not|not found|No such|undefined|warning|WARNING)' "$log" | grep -v 'rerun-if-env-changed' | tail -n 80 || true)"
             if [[ -z "$summary" ]]; then
               summary="$(tail -n 80 "$log")"
@@ -319,7 +334,8 @@ jobs:
           stage_dir="../dist/${ARTIFACT_NAME}"
           mkdir -p "$stage_dir"
           install -m 0755 target/release/codex "$stage_dir/codex"
-          tar -C "$stage_dir" -czf "../dist/${ARTIFACT_NAME}.tar.gz" codex
+          install -m 0755 target/release/codex-code-mode-host "$stage_dir/codex-code-mode-host"
+          tar -C "$stage_dir" -czf "../dist/${ARTIFACT_NAME}.tar.gz" codex codex-code-mode-host
           sha256sum "../dist/${ARTIFACT_NAME}.tar.gz" > "../dist/${ARTIFACT_NAME}.sha256"
 
       - name: Upload cargo build log
@@ -337,6 +353,7 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: |
             dist/${{ matrix.artifact_name }}/codex
+            dist/${{ matrix.artifact_name }}/codex-code-mode-host
             dist/${{ matrix.artifact_name }}.tar.gz
             dist/${{ matrix.artifact_name }}.sha256
           if-no-files-found: error
