@@ -249,27 +249,29 @@ jobs:
       # rusty_v8_bazel.py only calls `tomllib.loads`, which tomli provides
       # with an identical signature.
       # tomli alone got Ubuntu 22.04 (python3.10) passing, but Ubuntu 20.04
-      # (python3.8) still fails one import earlier: rusty_v8_bazel.py imports
-      # run_bazel_with_buildbuddy.py, which subscripts
-      # `collections.abc.Sequence[str]` directly in a function signature --
-      # PEP 585 syntax, valid only from Python 3.9. No stdlib backport fixes
-      # that; it needs a real 3.9+ interpreter. Unlike our failed
+      # (python3.8) fails two imports earlier, in run_bazel_with_buildbuddy.py:
+      # first `collections.abc.Sequence[str]` subscripted directly in a
+      # signature (PEP 585, needs 3.9+), then `str | None` as a union type
+      # (PEP 604, needs 3.10+) -- neither has `from __future__ import
+      # annotations`, so both are evaluated eagerly. 3.9 alone (tried first)
+      # still failed on the second one. Matching 22.04's already-proven 3.10
+      # instead of guessing at a third version. Unlike our failed
       # actions/setup-python (glibc 2.38) and deadsnakes (GPG import) attempts,
-      # python3.9 is published in focal's own default archives, so this needs
+      # python3.10 is published in focal's own default archives, so this needs
       # neither a portable binary nor a third-party PPA.
       # Debian/Ubuntu patches ensurepip to refuse running directly against an
       # apt-installed interpreter ("ensurepip is disabled in Debian/Ubuntu for
-      # the system python"), so `python3.9 -m ensurepip` fails even with
-      # python3.9-venv installed. venv creation is the sanctioned bootstrap
-      # path instead: it's allowed to give the venv its own pip.
-      - name: Install Python 3.9 for rusty_v8 tooling (Ubuntu 20.04 only)
+      # the system python"), so `-m ensurepip` fails even with the *-venv
+      # package installed. venv creation is the sanctioned bootstrap path
+      # instead: it's allowed to give the venv its own pip.
+      - name: Install Python 3.10 for rusty_v8 tooling (Ubuntu 20.04 only)
         if: matrix.ubuntu_version == '20.04'
         shell: bash
         run: |
           set -euo pipefail
-          apt-get install -y --no-install-recommends python3.9 python3.9-venv
+          apt-get install -y --no-install-recommends python3.10 python3.10-venv
           venv_dir="$(mktemp -d)"
-          python3.9 -m venv "${venv_dir}"
+          python3.10 -m venv "${venv_dir}"
           shim_dir="$(mktemp -d)"
           ln -sf "${venv_dir}/bin/python3" "${shim_dir}/python3"
           echo "${shim_dir}" >> "$GITHUB_PATH"
