@@ -245,6 +245,7 @@ jobs:
       # approach failing here. deadsnakes packages are built against each
       # Ubuntu release's own toolchain, so they link correctly on both.
       - name: Install Python 3.11 (deadsnakes) for rusty_v8 tooling
+        shell: bash
         run: |
           set -euo pipefail
           apt-get install -y --no-install-recommends software-properties-common
