@@ -239,10 +239,21 @@ jobs:
       # whose system python3 is 3.8/3.10 -- too old. Upstream doesn't hit this
       # because its release job runs on plain ubuntu-latest, not these
       # containers.
-      - name: Install Python 3.12 for rusty_v8 tooling
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      #
+      # actions/setup-python's prebuilt 3.12 needs glibc 2.38, which neither
+      # container ships (20.04 has 2.31, 22.04 has 2.35) -- confirmed by that
+      # approach failing here. deadsnakes packages are built against each
+      # Ubuntu release's own toolchain, so they link correctly on both.
+      - name: Install Python 3.11 (deadsnakes) for rusty_v8 tooling
+        run: |
+          set -euo pipefail
+          apt-get install -y --no-install-recommends software-properties-common
+          add-apt-repository -y ppa:deadsnakes/ppa
+          apt-get update
+          apt-get install -y --no-install-recommends python3.11
+          install_dir="$(mktemp -d)"
+          ln -sf "$(command -v python3.11)" "${install_dir}/python3"
+          echo "${install_dir}" >> "$GITHUB_PATH"
 
       # See the matching step in build-windows for why this is required:
       # `v8_enable_sandbox` needs a prebuilt V8 that only OpenAI's own
