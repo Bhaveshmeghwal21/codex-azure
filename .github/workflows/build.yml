@@ -233,6 +233,17 @@ jobs:
         with:
           toolchain: 1.95.0
 
+      # rusty_v8_bazel.py (invoked by the step below) imports the stdlib
+      # `tomllib`, added in Python 3.11. This job runs inside a pinned
+      # ubuntu:20.04/22.04 container as an EOL-glibc compatibility baseline,
+      # whose system python3 is 3.8/3.10 -- too old. Upstream doesn't hit this
+      # because its release job runs on plain ubuntu-latest, not these
+      # containers.
+      - name: Install Python 3.12 for rusty_v8 tooling
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       # See the matching step in build-windows for why this is required:
       # `v8_enable_sandbox` needs a prebuilt V8 that only OpenAI's own
       # releases publish, not denoland/rusty_v8's.
