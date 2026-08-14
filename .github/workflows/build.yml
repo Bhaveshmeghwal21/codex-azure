@@ -234,27 +234,29 @@ jobs:
           toolchain: 1.95.0
 
       # rusty_v8_bazel.py (invoked by the step below) imports the stdlib
-      # `tomllib`, added in Python 3.11. This job runs inside a pinned
-      # ubuntu:20.04/22.04 container as an EOL-glibc compatibility baseline,
-      # whose system python3 is 3.8/3.10 -- too old. Upstream doesn't hit this
-      # because its release job runs on plain ubuntu-latest, not these
-      # containers.
+      # `tomllib`, added in Python 3.11 -- this job's system python3 is
+      # 3.8/3.10 (ubuntu:20.04/22.04, pinned as an EOL-glibc compatibility
+      # baseline). Upstream doesn't hit this because its release job runs on
+      # plain ubuntu-latest.
       #
-      # actions/setup-python's prebuilt 3.12 needs glibc 2.38, which neither
-      # container ships (20.04 has 2.31, 22.04 has 2.35) -- confirmed by that
-      # approach failing here. deadsnakes packages are built against each
-      # Ubuntu release's own toolchain, so they link correctly on both.
-      - name: Install Python 3.11 (deadsnakes) for rusty_v8 tooling
+      # Getting a real 3.11+ interpreter into these containers turned out to
+      # have no clean path: actions/setup-python's prebuilt needs glibc 2.38,
+      # which neither container ships; deadsnakes' PPA needs a GPG keyring
+      # import that fails in this minimal image. Simplest fix: the container's
+      # own python3 is otherwise fine, so backport just the missing stdlib
+      # module via `tomli` (the library tomllib itself was vendored from) and
+      # shim it onto sys.path under the name the script imports.
+      # rusty_v8_bazel.py only calls `tomllib.loads`, which tomli provides
+      # with an identical signature.
+      - name: Install tomli backport for rusty_v8 tooling
         shell: bash
         run: |
           set -euo pipefail
-          apt-get install -y --no-install-recommends software-properties-common
-          add-apt-repository -y ppa:deadsnakes/ppa
-          apt-get update
-          apt-get install -y --no-install-recommends python3.11
-          install_dir="$(mktemp -d)"
-          ln -sf "$(command -v python3.11)" "${install_dir}/python3"
-          echo "${install_dir}" >> "$GITHUB_PATH"
+          command -v pip3 >/dev/null 2>&1 || apt-get install -y --no-install-recommends python3-pip
+          python3 -m pip install --quiet tomli
+          shim_dir="$(mktemp -d)"
+          printf 'from tomli import loads, load, TOMLDecodeError\n' > "${shim_dir}/tomllib.py"
+          echo "PYTHONPATH=${shim_dir}${PYTHONPATH:+:${PYTHONPATH}}" >> "$GITHUB_ENV"
 
       # See the matching step in build-windows for why this is required:
       # `v8_enable_sandbox` needs a prebuilt V8 that only OpenAI's own
