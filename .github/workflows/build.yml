@@ -248,6 +248,26 @@ jobs:
       # shim it onto sys.path under the name the script imports.
       # rusty_v8_bazel.py only calls `tomllib.loads`, which tomli provides
       # with an identical signature.
+      # tomli alone got Ubuntu 22.04 (python3.10) passing, but Ubuntu 20.04
+      # (python3.8) still fails one import earlier: rusty_v8_bazel.py imports
+      # run_bazel_with_buildbuddy.py, which subscripts
+      # `collections.abc.Sequence[str]` directly in a function signature --
+      # PEP 585 syntax, valid only from Python 3.9. No stdlib backport fixes
+      # that; it needs a real 3.9+ interpreter. Unlike our failed
+      # actions/setup-python (glibc 2.38) and deadsnakes (GPG import) attempts,
+      # python3.9 is published in focal's own default archives, so this needs
+      # neither a portable binary nor a third-party PPA.
+      - name: Install Python 3.9 for rusty_v8 tooling (Ubuntu 20.04 only)
+        if: matrix.ubuntu_version == '20.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get install -y --no-install-recommends python3.9 python3.9-venv
+          python3.9 -m ensurepip --upgrade
+          shim_dir="$(mktemp -d)"
+          ln -sf "$(command -v python3.9)" "${shim_dir}/python3"
+          echo "${shim_dir}" >> "$GITHUB_PATH"
+
       - name: Install tomli backport for rusty_v8 tooling
         shell: bash
         run: |
