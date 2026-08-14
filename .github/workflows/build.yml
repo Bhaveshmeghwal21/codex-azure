@@ -257,15 +257,21 @@ jobs:
       # actions/setup-python (glibc 2.38) and deadsnakes (GPG import) attempts,
       # python3.9 is published in focal's own default archives, so this needs
       # neither a portable binary nor a third-party PPA.
+      # Debian/Ubuntu patches ensurepip to refuse running directly against an
+      # apt-installed interpreter ("ensurepip is disabled in Debian/Ubuntu for
+      # the system python"), so `python3.9 -m ensurepip` fails even with
+      # python3.9-venv installed. venv creation is the sanctioned bootstrap
+      # path instead: it's allowed to give the venv its own pip.
       - name: Install Python 3.9 for rusty_v8 tooling (Ubuntu 20.04 only)
         if: matrix.ubuntu_version == '20.04'
         shell: bash
         run: |
           set -euo pipefail
           apt-get install -y --no-install-recommends python3.9 python3.9-venv
-          python3.9 -m ensurepip --upgrade
+          venv_dir="$(mktemp -d)"
+          python3.9 -m venv "${venv_dir}"
           shim_dir="$(mktemp -d)"
-          ln -sf "$(command -v python3.9)" "${shim_dir}/python3"
+          ln -sf "${venv_dir}/bin/python3" "${shim_dir}/python3"
           echo "${shim_dir}" >> "$GITHUB_PATH"
 
       - name: Install tomli backport for rusty_v8 tooling
