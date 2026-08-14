@@ -31,6 +31,19 @@ jobs:
         with:
           toolchain: 1.95.0
 
+      # codex-code-mode-host links the `v8` crate with `v8_enable_sandbox`
+      # enabled. That build variant is never published on denoland/rusty_v8's
+      # own GitHub releases for any platform -- OpenAI builds it themselves
+      # and publishes it under openai/codex's own releases instead. This
+      # composite action (inherited from upstream, previously unused here)
+      # downloads and checksums those artifacts and points the `v8` crate's
+      # build script at them via RUSTY_V8_ARCHIVE / RUSTY_V8_SRC_BINDING_PATH,
+      # exactly as rust-release-windows.yml / rust-release.yml already do.
+      - name: Configure rusty_v8 artifact overrides and verify checksums
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: x86_64-pc-windows-msvc
+
       - name: Cache Rust dependencies
         uses: actions/cache@v4
         with:
@@ -219,6 +232,14 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
+
+      # See the matching step in build-windows for why this is required:
+      # `v8_enable_sandbox` needs a prebuilt V8 that only OpenAI's own
+      # releases publish, not denoland/rusty_v8's.
+      - name: Configure rusty_v8 artifact overrides and verify checksums
+        uses: ./.github/actions/setup-rusty-v8
+        with:
+          target: x86_64-unknown-linux-gnu
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
