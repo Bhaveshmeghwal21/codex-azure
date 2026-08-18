@@ -105,26 +105,25 @@ fn fallback_tool_description(tool: &Map<String, Value>) -> String {
 }
 
 fn azure_compatible_input_item(mut item: ResponseItem) -> Option<ResponseItem> {
+    // Azure deployments do not share stored response-item state across model or deployment
+    // changes. Replaying a server-issued id therefore makes Azure try to resolve an item that
+    // does not exist in the active deployment, producing "Item with id 'rs_...' not found".
+    // Keep the item contents, but make the replay self-contained.
+    item.set_id(/*new_id*/ None);
+
     match &mut item {
         ResponseItem::Reasoning {
-            id,
+            id: _,
             summary,
             content,
             encrypted_content,
             internal_chat_message_metadata_passthrough: _,
         } => {
             *encrypted_content = None;
-            // Never drop a reasoning item that has an id, even if summary/content
-            // are empty. Azure requires the reasoning item to be present whenever
-            // its paired message item appears in the input. Dropping an empty
-            // reasoning item causes the API to reject the next resume with:
-            //   "Item 'msg_...' was provided without its required 'reasoning' item"
-            // Instead, inject a minimal placeholder summary so the item is valid.
+            // Keep a reasoning item whenever its paired message item appears in the input.
+            // Azure rejects a paired message without its reasoning item, so an empty historical
+            // reasoning item gets a minimal placeholder summary instead of being dropped.
             if summary.is_empty() && content.as_ref().is_none_or(Vec::is_empty) {
-                if id.as_ref().is_none_or(|id| id.is_empty()) {
-                    // No id either — safe to drop, nothing to pair against.
-                    return None;
-                }
                 summary.push(ReasoningItemReasoningSummary::SummaryText {
                     text: String::new(),
                 });

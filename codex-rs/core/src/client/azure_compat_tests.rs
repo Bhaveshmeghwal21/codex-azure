@@ -129,15 +129,15 @@ fn azure_model_input_omits_replayed_encrypted_content_without_mutating_history()
 
     let projected = model_input_for_provider(&azure_api_provider(), input.clone());
 
-    // Reasoning keeps its id but loses encrypted_content (and gains a stub
-    // summary); compaction items are dropped; encrypted tool output is
-    // replaced with a readable placeholder.
+    // Azure replay strips server-issued ids, removes encrypted reasoning content (and gains a
+    // stub summary); compaction items are dropped; encrypted tool output is replaced with a
+    // readable placeholder.
     assert_eq!(
         projected,
         vec![
             user_message(),
             ResponseItem::Reasoning {
-                id: Some(ResponseItemId::from_server("rs_1".to_string())),
+                id: None,
                 summary: vec![ReasoningItemReasoningSummary::SummaryText {
                     text: String::new(),
                 }],
@@ -171,7 +171,7 @@ fn azure_model_input_preserves_reasoning_summary_without_encrypted_content() {
     assert_eq!(
         projected,
         vec![ResponseItem::Reasoning {
-            id: Some(ResponseItemId::from_server("rs_1".to_string())),
+            id: None,
             summary: vec![ReasoningItemReasoningSummary::SummaryText {
                 text: "readable summary".to_string(),
             }],
@@ -179,6 +179,56 @@ fn azure_model_input_preserves_reasoning_summary_without_encrypted_content() {
             encrypted_content: None,
             internal_chat_message_metadata_passthrough: None,
         }]
+    );
+}
+
+#[test]
+fn azure_model_input_drops_server_item_ids() {
+    let input = vec![
+        ResponseItem::Reasoning {
+            id: Some(ResponseItemId::from_server("rs_old".to_string())),
+            summary: vec![ReasoningItemReasoningSummary::SummaryText {
+                text: "summary".to_string(),
+            }],
+            content: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        ResponseItem::Message {
+            id: Some(ResponseItemId::from_server("msg_old".to_string())),
+            role: "assistant".to_string(),
+            content: vec![ContentItem::OutputText {
+                text: "answer".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+    ];
+
+    let projected = model_input_for_provider(&azure_api_provider(), input);
+
+    assert_eq!(
+        projected,
+        vec![
+            ResponseItem::Reasoning {
+                id: None,
+                summary: vec![ReasoningItemReasoningSummary::SummaryText {
+                    text: "summary".to_string(),
+                }],
+                content: None,
+                encrypted_content: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+            ResponseItem::Message {
+                id: None,
+                role: "assistant".to_string(),
+                content: vec![ContentItem::OutputText {
+                    text: "answer".to_string(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+        ]
     );
 }
 

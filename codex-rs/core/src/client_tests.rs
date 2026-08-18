@@ -325,6 +325,10 @@ fn azure_responses_request_omits_null_encrypted_content_on_wire() {
         body["input"][0].get("encrypted_content").is_none(),
         "Azure request body should omit encrypted_content instead of sending null: {body}"
     );
+    assert!(
+        body["input"][0].get("id").is_none(),
+        "Azure replay input must not carry server-issued response item ids: {body}"
+    );
     assert_eq!(
         body["input"][0]["summary"][0]["text"].as_str(),
         Some("readable summary")
